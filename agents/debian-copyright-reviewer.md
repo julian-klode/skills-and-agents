@@ -31,8 +31,15 @@ Work through this checklist:
      Flag `MIT` (should be `Expat`), `Apache-2.0` (should be `Apache-2`), etc.
 
 3. For every stand-alone `License:` stanza:
-   - If it contains full text: verify it matches the crate's actual license
-     file, not a generic template.
+   - If it contains full text: verify the text is a correct subset of the
+     crate's actual license file.
+     **Flag any title line** (e.g. "The MIT License (MIT)", "ISC License").
+     **Flag any real copyright notice** with a specific name and year
+     (e.g. "Copyright (c) 2015 Andrew Gallant") — these belong in the
+     `Copyright:` field of the `Files:` stanza, not duplicated here.
+     **Allow template/placeholder** copyright lines (e.g. "Copyright (C)
+     <year> <name of author>") — these are license boilerplate that
+     instructs users how to apply the license.
    - If it contains a system pointer: confirm the license is one that has a
      system copy (Apache-2, GPL-*, LGPL-*).
 

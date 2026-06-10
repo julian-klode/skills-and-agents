@@ -44,8 +44,15 @@ For each crate, follow this workflow precisely:
 7. For stand-alone `License:` stanzas:
    - Apache-2, GPL-2, GPL-3, LGPL-2.1: use the `/usr/share/common-licenses/`
      pointer.
-   - All others: embed the full license text verbatim from the crate's license
-     file, with blank lines replaced by ` .`.
+   - All others: embed the license text from the crate's license file, with
+     blank lines replaced by ` .`.
+     **Strip** any title line (e.g. "The MIT License (MIT)", "ISC License").
+     **Strip any real copyright notice** with a specific name and year
+     (e.g. "Copyright (c) 2015 Andrew Gallant") — these belong in the
+     `Copyright:` field, not duplicated here.
+     **Keep template/placeholder** copyright lines (e.g. "Copyright (C)
+     <year> <name of author>") — these are license boilerplate, not actual
+     copyright statements for the work.
 
 8. Write the result to `debian/copyright.in.d/<crate-name>`.
 

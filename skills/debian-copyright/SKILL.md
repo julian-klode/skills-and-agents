@@ -78,8 +78,17 @@ A file is made of stanzas separated by blank lines. There are three kinds:
 - **GPL-3, GPL-3+**: pointer to `/usr/share/common-licenses/GPL-3`.
 - **LGPL-2.1, LGPL-2.1+**: pointer to `/usr/share/common-licenses/LGPL-2.1`.
 - **All other licenses** (Expat, ISC, BSD-*, Unlicense, CC0, etc.):
-  embed the full license text verbatim from the crate's license file,
-  with blank lines replaced by ` .` (a space then a dot).
+  embed the license text from the crate's license file, with blank
+  lines replaced by ` .` (a space then a dot).
+  **Strip** any title line (e.g. "The MIT License (MIT)", "ISC License")
+  — these are section headers that would prevent deduplication.
+  **Strip any real copyright notice** with a specific name and year
+  (e.g. "Copyright (c) 2015 Andrew Gallant") — these belong in the
+  `Copyright:` field of the `Files:` stanza, not duplicated here.
+  **Keep template/placeholder copyright lines** (e.g. "Copyright (C)
+  <year> <name of author>" from GPL-3's "How to Apply These Terms"
+  instructions) — these are part of the license boilerplate, not
+  actual copyright statements for the work.
 
 ### Copyright field for UNLICENSE / public-domain files
 
@@ -276,6 +285,7 @@ For **batch mode** (whole `rust-vendor/` directory):
 | Glob missing subdirectories                        | Use `rust-vendor/foo/*` to cover all depths          |
 | Specific globs before general ones                 | General first; specific overrides last (last wins)   |
 | Embedding Apache-2 full text                       | Use `/usr/share/common-licenses/Apache-2.0` pointer  |
+| Real copyright in License: stanza body                | Move to `Copyright:` field; only keep template placeholders like `<year>` |
 | Splitting stanzas with identical copyright+license | Merge into one stanza with multiple `Copyright:` lines |
 | Missing `Copyright:` in a `Files:` stanza          | Every `Files:` stanza requires a `Copyright:` field  |
 | Cargo.toml `license` field is SPDX syntax          | Translate to DEP-5 (OR → or, fix short names per table) |
@@ -296,10 +306,6 @@ Copyright: 2015 Andrew Gallant <jamslam@gmail.com>
 License: Expat or Unlicense
 
 License: Expat
- The MIT License (MIT)
- .
- Copyright (c) 2015 Andrew Gallant
- .
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
  in the Software without restriction, including without limitation the rights
