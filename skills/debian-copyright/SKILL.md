@@ -204,8 +204,10 @@ here** — edit the agent files when the workflow changes.
 loop until the critic passes. It owns the file end to end — it drafts, has the
 critic review, and **applies every fix itself**. Editing is the actor's job.
 
-**Input**: one crate directory path (e.g. `rust-vendor/aho-corasick`) or
-`rust-vendor/` for batch mode over all crates.
+**Input**: exactly **one** crate directory path (e.g.
+`rust-vendor/aho-corasick`). The writer is single-crate; it never loops over
+the tree. Batch coordination is the primary agent's responsibility
+(section 3).
 
 In outline, the actor: reads `Cargo.toml` and the top-level license files;
 runs `licensecheck --merge-licenses -r --deb-machine` **once** (it already
@@ -240,32 +242,62 @@ definition.
 
 ---
 
-## 3. Orchestration: the actor-critic loop
+## 3. Orchestration
 
-The actor and critic talk directly to each other; the writer (actor) drives the
-loop. A coordinating primary agent only kicks it off and reports the result.
+There are three tiers, and each does exactly one job:
+
+- **Primary agent** — coordinates the batch (this is *not* a subagent). It
+  decides which crates to process and invokes the writer once per crate.
+- **`debian-copyright-writer` (actor)** — handles **one** crate: drafts the
+  file and drives the inner review loop.
+- **`debian-copyright-reviewer` (critic)** — read-only; judges one file and
+  returns a verdict. Never edits, never calls another agent.
+
+### Per-crate actor-critic loop (inside one writer invocation)
 
 ```
-1. Invoke debian-copyright-writer (actor) on the crate.
+1. Primary invokes debian-copyright-writer (actor) on ONE crate.
    The actor then, on its own:
      a. Drafts debian/copyright.in.d/<crate>.
      b. Invokes debian-copyright-reviewer (critic)        → verdict
      c. If FAIL: applies the critic's fixes itself,
         then re-invokes the critic                        → verdict
      d. Repeats (b–c) until PASS (max 3 rounds;
-        escalate to the user if still failing).
-2. The actor reports the final file path(s), the verdict, the round count,
-   and any licenses it deliberately excluded.
+        report unresolved issues to the primary if still failing).
+2. The actor reports the file path, verdict, round count, and any licenses it
+   deliberately excluded/added — concisely (one crate's worth).
 ```
 
-The critic never edits and never calls another agent; all editing lives in the
-actor.
+### Batch coordination (the primary agent's job)
 
-For **batch mode** (whole `rust-vendor/` directory): the actor runs the full
-draft + loop for each crate before moving to the next, reporting **one line per
-crate** (`<crate>: <license> — PASS (N rounds)`) plus a final tally, with full
-detail only for crates that fail after 3 rounds — keeping a large batch from
-overflowing context.
+The writer is single-crate, so the **primary agent** owns iterating the tree.
+The `/copyright` command is the named entry point (`/copyright all` for the
+whole tree, `/copyright <crate-dir>` for one). For a whole-tree run the primary:
+
+1. **Enumerate** the direct subdirectories of `rust-vendor/`.
+2. **Resume — skip already-done crates.** A crate is "done" when its
+   `debian/copyright.in.d/<crate>` exists, is non-empty, **and** passes
+   `cme check dpkg-copyright -file debian/copyright.in.d/<crate>` (exit 0).
+   Skip those; only (re)generate crates that are missing or whose fragment
+   fails `cme`. This makes re-runs cheap and self-healing.
+3. **Fan out in parallel.** Invoke `debian-copyright-writer` once per remaining
+   crate, issuing several `task` calls in a single message so they run
+   concurrently. The primary **chooses its own batch width** based on how many
+   crates remain and tool limits (the user may also trigger/adjust fan-out
+   manually). Each invocation gets a fresh, isolated context — this is the
+   whole reason the writer is single-crate.
+4. **Aggregate** results as **one line per crate**
+   (`<crate>: <license> — PASS (N rounds)`), surfacing full detail only for
+   crates that still fail after 3 rounds. End with a tally
+   (e.g. `361 crates: 357 PASS, 0 escalated, 4 skipped (already done)`).
+5. **Assemble + validate.** Once all fragments exist and pass, run
+   `debian/rules debian/copyright`. That target runs
+   `debian/bin/merge-copyright` (deduplicates stand-alone license texts and
+   renames clashing short names) and then `cme check dpkg-copyright` on the
+   merged file. Report success, or the `cme` error for human follow-up.
+
+The critic never edits and never calls another agent; all editing lives in the
+actor, and all batching lives in the primary.
 
 ---
 
@@ -291,6 +323,8 @@ overflowing context.
 | `WITH`/hyphen in an exception (`Apache-2 WITH LLVM-exception`) | Use `Apache-2 with LLVM exception` (lowercase `with`, space, word `exception`) |
 | Dropping an SPDX `OR` alternative (e.g. file says `Apache-2.0 OR ISC OR MIT`, only `Apache-2 or ISC` written) | Account for every alternative the source declares; add the missing license + stand-alone stanza |
 | Critic editing the file or calling another agent   | The critic is read-only; only the actor edits and only the actor drives the loop |
+| Writer looping over the whole `rust-vendor/` tree   | The writer is single-crate; the primary agent (or `/copyright all`) coordinates the batch and parallel fan-out |
+| Re-running the batch from scratch                   | Resume: skip crates whose fragment exists and passes `cme check`; only (re)generate missing/failing ones |
 | Hand-writing a crate-identifying `Comment:` in the header | The merge step discards the header stanza; let it auto-generate `Used by:` comments |
 | Emitting stanzas for `Copyright: NONE` / `License: UNKNOWN` rows | Drop them; they are metadata/build files covered by the catch-all glob |
 | Suffixing or "fixing" a license whose text matches another crate's | The merge step deduplicates identical texts and renames clashes automatically |

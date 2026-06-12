@@ -28,12 +28,16 @@ yourself**. Editing is your job.
 
 ## Your task
 
-You will be given a crate directory path such as `rust-vendor/aho-corasick`,
-or `rust-vendor/` to process all crates in batch.
+You will be given **one** crate directory path, such as
+`rust-vendor/aho-corasick`. You handle exactly that one crate. Batch
+coordination over the whole `rust-vendor/` tree is the primary agent's job
+(see the `debian-copyright` skill, section 3) — it invokes you once per crate,
+in parallel, each in its own fresh context. Do **not** try to loop over
+multiple crates yourself.
 
 ### Phase 1 — Draft
 
-For each crate, follow this workflow precisely:
+For the crate, follow this workflow precisely:
 
 1. Read `Cargo.toml` to extract: `name`, `authors`, `license`, `repository`,
    `homepage`.
@@ -239,21 +243,16 @@ is satisfied:
 ### Finishing
 
 Once the critic returns `VERDICT: PASS` (or you have exhausted 3 rounds),
-report back **concisely**:
-- The path of each file you wrote.
-- A one-line summary of the copyright + license for each crate.
+report back **concisely** for your one crate:
+- The path of the file you wrote.
+- A one-line summary of the copyright + license.
 - Any license you deliberately excluded (e.g. a licensecheck false positive
   like `UNKNOWN`) or added that licensecheck missed (e.g. present in
   `Cargo.toml`/LICENSE but undetected), each with a one-line reason.
 - The final verdict and the number of review rounds it took.
+- A short summary of the changes the critic prompted, if any.
 
-In **single-crate mode** you may also give a short summary of the changes the
-critic prompted.
-
-In **batch mode** (`rust-vendor/`), run the full draft + actor-critic loop for
-each crate before moving to the next. Keep per-crate output to **one line**:
-`<crate>: <license summary> — PASS (N rounds)`. Do **not** print full diffs,
-file contents, or per-round detail for crates that pass. Reserve detail for
-crates that fail after 3 rounds (list their unresolved issues), and end with a
-short tally (e.g. `184 crates: 182 PASS, 2 escalated`). This keeps a large
-batch from overflowing context.
+If you exhausted 3 rounds without a PASS, say so explicitly and list the
+critic's remaining unresolved issues so the primary can surface them for
+manual resolution. Keep the whole report short — the primary aggregates one
+line per crate across the batch, so do not pad it.
