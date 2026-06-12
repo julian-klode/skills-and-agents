@@ -332,14 +332,17 @@ whole tree, `/copyright <crate-dir>` for one). For a whole-tree run the primary:
    Skip those; only (re)generate crates that are missing, whose non-empty
    fragment fails `cme`, or whose fragment is empty but the crate is **not** a
    stub (an erroneous empty file). This makes re-runs cheap and self-healing.
-4. **Fan out in parallel** (real, non-stub, not-yet-done crates only). Invoke
-   `debian-copyright-writer` once per remaining crate, issuing several `task`
-   calls in a single message so they run concurrently. The primary **chooses
-   its own batch width** based on how many crates remain and tool limits (the
-   user may also trigger/adjust fan-out manually). Each invocation gets a
-   fresh, isolated context — this is the whole reason the writer is
-   single-crate. (The writer also re-checks for a stub as a defensive
-   fallback, but the coordinator should already have filtered them out.)
+4. **Fan out in parallel** (real, non-stub, not-yet-done crates only).
+   **Order the crates ascending by number of files (smallest first)** and
+   dispatch in that order, so the quick, simple crates complete first and any
+   large/slow ones land in the final waves. Invoke `debian-copyright-writer`
+   once per remaining crate, issuing several `task` calls in a single message
+   so they run concurrently. The primary **chooses its own batch width** based
+   on how many crates remain and tool limits (the user may also trigger/adjust
+   fan-out manually). Each invocation gets a fresh, isolated context — this is
+   the whole reason the writer is single-crate. (The writer also re-checks for
+   a stub as a defensive fallback, but the coordinator should already have
+   filtered them out.)
 5. **Aggregate** results as **one line per crate**
    (`<crate>: <license> — PASS (N rounds)`, or `<crate>: stub — empty file`),
    surfacing full detail only for crates that still fail after 3 rounds. End
