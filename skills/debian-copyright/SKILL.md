@@ -225,9 +225,13 @@ definition.
 **Role**: audits the generated file **read-only** and returns a strict verdict.
 It never edits the file and never invokes another agent — it only judges; the
 actor applies. It runs `cme check dpkg-copyright -file <fragment>` (the same
-format gate the package build uses) plus content checks, with its `bash`
-permission narrowed to inspection commands (`licensecheck`, `cme`, `rg`/`grep`,
-`sed`, `sort`, `uniq`, `head`, `cat`, `ls`, `find`).
+format gate the package build uses, invoked as a bare command — no `cd`/pipe,
+since opencode matches parsed commands) plus content checks. It cannot edit
+(`edit: deny`, `write: false`); its `bash` allows the inspection tools
+(`cme`, `licensecheck`, `rg`/`grep`, `sed`, `sort`, `uniq`, `head`, `cat`,
+`ls`, `find`, `wc`, `test`, `cd`) and defaults the rest to `ask` rather than a
+hard deny, so an unanticipated harmless command prompts instead of silently
+failing the review.
 
 **Input**: the path to `debian/copyright.in.d/<crate>` and the crate directory.
 
