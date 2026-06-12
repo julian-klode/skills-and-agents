@@ -121,6 +121,27 @@ For each crate, follow this workflow precisely:
    - **Do not** create `Files:` stanzas for `LICENSE*`, `COPYING*`, or
      `UNLICENSE*` files. They are covered by the catch-all glob and their
      content is captured in stand-alone `License:` stanzas.
+   - **Collapse per-holder years into one range.** licensecheck emits a
+     separate `Copyright:` line per file, so the same holder often appears many
+     times with different years (e.g. `2015 Andrew Gallant`, `2014 Andrew
+     Gallant`, `2018-2020 Andrew Gallant`). Within a stanza, merge all lines
+     for the **same holder** into a single line whose year span runs from the
+     earliest to the latest year seen: those three become
+     `2014-2020 Andrew Gallant`. Rules:
+     - Match holders by their text after the year(s) — normalise surrounding
+       whitespace and a trailing comma after the year (`2015, Andrew Gallant`
+       and `2015 Andrew Gallant` are the same holder), but do **not** merge
+       genuinely different holders or differing name/email spellings.
+     - Take the minimum start year and maximum end year across all that
+       holder's lines; if min == max, emit the single year, otherwise
+       `<min>-<max>`. Do not invent years to fill the range — the range is
+       just shorthand for "active in these years", which is standard Debian
+       practice.
+     - Keep one `Copyright:` line per distinct holder (continuation lines
+       indented by one space), sorted by earliest year then name for
+       determinism.
+     - If a holder's line has no year at all, keep it yearless (do not
+       fabricate one); list it after the dated holders.
 
 7. **Determine `or` vs `and`** for the `License:` field:
    - Use `or` only when **every** source file in the stanza's scope declares

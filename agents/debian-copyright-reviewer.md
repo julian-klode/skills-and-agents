@@ -79,6 +79,13 @@ Work through this checklist:
    - For each `Copyright:` line, verify the named holder appears in a license
      file or source file within the matched glob's scope. Accept years from
      `LICENSE*`/`COPYING*`/`UNLICENSE*` files as authoritative.
+   - **Accept collapsed year ranges**: the same holder's per-file years are
+     intentionally merged into a single `<min>-<max>` line (e.g. files dated
+     2015 and 2018 → `2015-2018 Foo`). Do **not** flag a range whose endpoints
+     are the earliest/latest years that holder actually appears with, and do
+     **not** demand one line per file. Only flag a range if an endpoint year
+     appears nowhere for that holder (fabricated), or if two genuinely
+     different holders were merged into one line.
    - Do **not** flag the absence of individual `Files:` stanzas for license
      files (`LICENSE*`, `COPYING*`, `UNLICENSE*`). It is correct and
      intentional that these are covered only by the catch-all glob.

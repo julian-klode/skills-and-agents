@@ -43,7 +43,13 @@ A file is made of stanzas separated by blank lines. There are three kinds:
 - `Copyright:` — one or more free-form copyright notices, one per line
   (continuation lines indented by one space). Must contain at least one
   holder. Year ranges are fine (`2015-2024`). Omit years only when genuinely
-  absent from all source files and license files.
+  absent from all source files and license files. **One line per distinct
+  holder**: when the same holder appears with several years (common, since
+  licensecheck emits one line per file), collapse them into a single line
+  spanning the earliest to latest year — e.g. `2015 Foo`, `2014 Foo` and
+  `2018-2020 Foo` become `2014-2020 Foo`. Match holders by the text after the
+  year (treating `2015, Foo` and `2015 Foo` as the same); never merge
+  different holders, and never invent years to pad a range.
 - `License:` — first line is the short name (synopsis); remaining lines
   (indented, blank lines as ` .`) are the full license text or a pointer.
   In a Files stanza the synopsis alone suffices if a stand-alone License
@@ -277,6 +283,7 @@ overflowing context.
 | Embedding Apache-2 full text                       | Use `/usr/share/common-licenses/Apache-2.0` pointer  |
 | Real copyright in License: stanza body                | Move to `Copyright:` field; only keep template placeholders like `<year>` |
 | Splitting stanzas with identical copyright+license | Merge into one stanza with multiple `Copyright:` lines |
+| Repeating the same holder with different years     | Collapse to one line with the min–max range (`2014-2020 Foo`) |
 | Missing `Copyright:` in a `Files:` stanza          | Every `Files:` stanza requires a `Copyright:` field  |
 | Cargo.toml `license` field is SPDX syntax          | Translate to DEP-5 (OR → or, fix short names per table) |
 | `or` used when source files are more restrictive     | Use `and` instead and add `Comment:` explaining the inconsistency |
