@@ -4,16 +4,20 @@ description: >
   Use when writing, generating, or reviewing debian/copyright or
   debian/copyright.in.d/<crate> files for Debian packages, including vendored
   Rust crates. Covers DEP-5 / machine-readable copyright format (Format 1.0),
-  multi-agent writer + reviewer + editor pipeline. Trigger keywords:
-  debian/copyright, copyright.in.d, DEP-5, vendored crate, Rust vendor,
-  copyright stanza, decopy, Expat, Unlicense, Apache-2.
+  a two-agent actor-critic loop (writer actor + reviewer critic). Trigger
+  keywords: debian/copyright, copyright.in.d, DEP-5, vendored crate, Rust
+  vendor, copyright stanza, decopy, Expat, Unlicense, Apache-2.
 ---
 
 # Debian copyright generation skill
 
 You are an expert Debian developer. This skill governs how to generate and
 verify `debian/copyright.in.d/<crate>` fragments (and `debian/copyright`
-itself) using a three-agent pipeline: **writer → reviewer → editor**.
+itself) using a two-agent **actor-critic loop**: the **writer** (actor) drafts
+and edits the file, and the **reviewer** (critic) audits it read-only and
+returns a verdict. The actor and critic talk directly to each other — the
+writer invokes the reviewer, applies the fixes itself, and re-invokes the
+reviewer until it passes.
 
 ---
 
@@ -170,14 +174,21 @@ Always populate from `Cargo.toml`: use `repository` if present, else
 
 ---
 
-## 2. Agent: `debian-copyright-writer`
+## 2. Agent: `debian-copyright-writer` (the actor)
 
+**Role**: actor in the actor-critic loop.
 **Mode**: subagent
+**Tools**: `read`, `write`, `edit`, `bash`, `grep`, `glob`, `task` (so it can
+invoke the critic).
 **Input**: one crate directory path (e.g. `rust-vendor/aho-corasick`) or
 `rust-vendor/` for batch mode over all crates.
-**Output**: writes `debian/copyright.in.d/<crate-name>` for each crate.
+**Output**: writes `debian/copyright.in.d/<crate-name>` for each crate, then
+drives the review loop until the critic passes.
 
-### Writer workflow
+The writer owns the file end to end: it drafts the file, has it critiqued, and
+**applies every fix itself**. Editing is the actor's job.
+
+### Writer workflow — Phase 1: draft
 
 For each crate directory:
 
@@ -260,19 +271,84 @@ For each crate directory:
    d. Omit the year only if genuinely unavailable in any of the above
 
 9. **Batch mode** — iterate over every direct subdirectory of `rust-vendor/`
-   and process each one. Report progress crate by crate.
+   and process each one. Run the full draft + actor-critic loop for each crate
+   before moving to the next. Report progress crate by crate.
+
+### Writer workflow — Phase 2: the actor-critic loop
+
+After writing the draft, the writer (actor) **does not stop**. It runs this
+loop, talking directly to the reviewer (critic):
+
+1. **Invoke the critic** via the `task` tool, calling the
+   `debian-copyright-reviewer` agent with the path to the file just written and
+   the crate directory path. Ask for its `VERDICT`.
+
+2. **Read the verdict.**
+   - `VERDICT: PASS` → the loop is done; go to "Finishing" below.
+   - `VERDICT: FAIL` → the critic returns a numbered list of issues, each
+     citing the field/line, what is wrong, and the exact fix. Continue.
+
+3. **Apply every fix yourself** (the actor edits; the critic never does),
+   making the **minimal targeted edit** per issue, using only information
+   found in the crate's actual files:
+   - Wrong copyright holder → replace with exact text from the source/license
+     file.
+   - Hallucinated copyright holder → remove that line entirely.
+   - Missing copyright holder → add the `Copyright:` line, verbatim from the
+     source file where it was found.
+   - Wrong license short name → replace with the correct DEP-5 short name.
+   - Missing license (declared in source but absent) → add it to the relevant
+     `Files:` stanza's `License:` expression and add the matching stand-alone
+     `License:` stanza, or create a dedicated `Files:` stanza for the subtree
+     that carries it — whichever most accurately reflects the source.
+   - Wrong `Source:` URL → replace with the URL from `Cargo.toml`.
+   - Wrong/generic license text → replace with verbatim text from the crate's
+     actual license file; fix continuation-line indentation (exactly one
+     leading space per body line; blank lines as ` .`).
+   - `or`/`and` errors, parenthesised synopses, malformed `WITH` exceptions →
+     fix per the grammar rules in section 1.
+
+   **Never add information not present in the crate's actual files.** If a fix
+   would require inventing information, add a `Comment:` noting the issue and
+   flag it in the final report for human review.
+
+4. **Re-invoke the critic** on the updated file (back to step 1).
+
+5. **Loop control** — repeat edit→review up to **3 total review rounds**. If
+   the critic still returns `VERDICT: FAIL` after 3 rounds, stop and escalate
+   the remaining issues to the user. Never loop forever; never silence the
+   critic by deleting legitimate content.
+
+### Finishing
+
+Once the critic returns `VERDICT: PASS` (or 3 rounds are exhausted), report:
+- The path of each file written.
+- A one-line copyright + license summary per crate.
+- Any license licensecheck reported but you deliberately excluded, and why.
+- The final verdict, the number of review rounds, and a short summary of the
+  changes the critic prompted.
 
 ---
 
-## 3. Agent: `debian-copyright-reviewer`
+## 3. Agent: `debian-copyright-reviewer` (the critic)
 
+**Role**: critic in the actor-critic loop.
 **Mode**: subagent
+**Tools**: `read`, `bash`, `grep`, `glob` only — **`write: false`,
+`edit: false`, `task: false`**. The critic is strictly read-only: it never
+edits the file and never invokes another agent. Its `bash` permission is
+narrowed to inspection commands (`licensecheck`, `cme`, `rg`/`grep`, `sed`,
+`sort`, `uniq`, `head`, `cat`, `ls`, `find`).
 **Input**: path to `debian/copyright.in.d/<crate>` and the crate directory.
-**Output**: a structured review report. Either `VERDICT: PASS` or
-`VERDICT: FAIL` with a numbered list of issues, each citing:
+**Output**: a structured review report the actor can act on directly. Either
+`VERDICT: PASS` or `VERDICT: FAIL` with a numbered list of issues, each citing:
 - The field and line in `debian/copyright.in.d/<crate>` that is wrong
 - What was found in the actual source vs. what was written
 - The exact fix required
+
+Locking the critic read-only is deliberate: it eliminates the risk of the
+critic hallucinating formatting errors or truncating the file while trying to
+"fix" it. The critic only judges; the actor applies.
 
 ### Reviewer workflow
 
@@ -301,10 +377,17 @@ For each crate directory:
    not found anywhere in the crate's files or `Cargo.toml` `authors`, flag it
    as hallucinated.
 
-6. **Check completeness** — if source files contain copyright lines that are
-   not reflected anywhere in the generated stanzas, flag them as missing.
+6. **Check completeness** — if source files declare a copyright holder or a
+   license (including any alternative in an SPDX `OR` expression) that is not
+   reflected anywhere in the generated stanzas, flag it as missing. SPDX
+   headers are authoritative even when licensecheck collapses an `OR`
+   expression to one license; cross-check with `licensecheck` but verify the
+   actual file before flagging (ignore false positives such as `UNKNOWN`,
+   `*No copyright*`, `[generated file]`, and OpenSSL advertising clauses
+   misread as `Apache-1.0`).
 
-7. **Output the verdict**:
+7. **Output the verdict** — the actor applies the fixes, so make each issue
+   self-contained and actionable:
    ```
    VERDICT: PASS
    ```
@@ -318,54 +401,34 @@ For each crate directory:
 
 ---
 
-## 4. Agent: `debian-copyright-editor`
+## 4. Orchestration: the actor-critic loop
 
-**Mode**: subagent
-**Input**: the reviewer's `VERDICT: FAIL` report and the path to
-`debian/copyright.in.d/<crate>`.
-**Output**: the file edited in place; a summary of changes made.
+The actor and critic talk directly to each other; the writer (actor) drives the
+loop. A coordinating primary agent only kicks it off and reports the result.
 
-### Editor workflow
+```
+1. Invoke debian-copyright-writer (actor) on the crate.
+   The actor then, on its own:
+     a. Drafts debian/copyright.in.d/<crate>.
+     b. Invokes debian-copyright-reviewer (critic)        → verdict
+     c. If FAIL: applies the critic's fixes itself,
+        then re-invokes the critic                        → verdict
+     d. Repeats (b–c) until PASS (max 3 rounds;
+        escalate to the user if still failing).
+2. The actor reports the final file path(s), the verdict, the round count,
+   and any licenses it deliberately excluded.
+```
 
-1. Read the reviewer's issue list carefully.
-2. For each issue, make the **minimal targeted edit** to the file:
-   - Fix wrong copyright holder names to match source files exactly.
-   - Fix wrong license short names.
-   - Remove hallucinated copyright holders.
-   - Add missing copyright holders found in source files.
-   - Fix wrong `Source:` URL to match `Cargo.toml`.
-   - Fix wrong license text to match the crate's actual license file.
-3. **Never add information not found in the crate's actual files.**
-4. After all edits are made, output a summary of every change.
-5. **Trigger the reviewer agent again** on the updated file to confirm all
-   issues are resolved. Repeat editor→reviewer until `VERDICT: PASS`.
+The critic never edits and never calls another agent; all editing lives in the
+actor.
+
+For **batch mode** (whole `rust-vendor/` directory): the actor runs the full
+draft + loop for each crate before moving to the next, reporting progress
+crate by crate.
 
 ---
 
-## 5. Primary agent invocation workflow
-
-When the user asks to generate or fix a `debian/copyright.in.d` file, the
-primary agent orchestrates the pipeline:
-
-```
-1. Run debian-copyright-writer  →  file written
-2. Run debian-copyright-reviewer  →  verdict
-3. If FAIL:
-     Run debian-copyright-editor  →  file edited
-     Run debian-copyright-reviewer  →  verdict
-     Repeat until PASS (max 3 rounds; escalate to user if still failing)
-4. Report final status and file path to user.
-```
-
-For **batch mode** (whole `rust-vendor/` directory):
-- Run the writer over all crates first.
-- Then run the reviewer over each crate in sequence.
-- Collect all failures, run the editor in one pass per failing crate, then
-  re-review. This avoids excessive context switching.
-
----
-
-## 6. Common pitfalls reference
+## 5. Common pitfalls reference
 
 | Pitfall                                            | Correct behaviour                                    |
 |----------------------------------------------------|------------------------------------------------------|
@@ -384,10 +447,12 @@ For **batch mode** (whole `rust-vendor/` directory):
 | `or` used when source files are more restrictive     | Use `and` instead and add `Comment:` explaining the inconsistency |
 | Parentheses in a `License:` synopsis (`(A or B) and C`) | Use a comma to group: `A or B, and C` (grammar has no parens) |
 | `WITH`/hyphen in an exception (`Apache-2 WITH LLVM-exception`) | Use `Apache-2 with LLVM exception` (lowercase `with`, space, word `exception`) |
+| Dropping an SPDX `OR` alternative (e.g. file says `Apache-2.0 OR ISC OR MIT`, only `Apache-2 or ISC` written) | Account for every alternative the source declares; add the missing license + stand-alone stanza |
+| Critic editing the file or calling another agent   | The critic is read-only; only the actor edits and only the actor drives the loop |
 
 ---
 
-## 7. Example output
+## 6. Example output
 
 For `rust-vendor/aho-corasick` (Unlicense OR MIT, author Andrew Gallant):
 
