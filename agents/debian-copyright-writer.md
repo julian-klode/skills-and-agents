@@ -129,11 +129,32 @@ For the crate, follow this workflow precisely:
    - Map all license names to correct DEP-5 short names per the
      `debian-copyright` skill table (MIT → Expat, Apache-2.0 → Apache-2, etc.).
 
-6. Group files by their copyright holder(s) and license. Produce one `Files:`
-   stanza per distinct group. Always start with the broadest glob
-   (`rust-vendor/<crate>/*`), with more specific patterns as overrides after.
-   - All files: one author, one dual license → single `Files: rust-vendor/<crate>/*` stanza
-   - Embedded third-party code: a subtree with different copyright → separate stanza
+6. **Group files into `Files:` stanzas by LICENSE — never by copyright.**
+   The grouping key is the license, not the copyright holder. Produce one
+   `Files:` stanza per distinct **license situation**. Always start with the
+   broadest glob (`rust-vendor/<crate>/*`), with more specific path globs as
+   overrides after (last-match-wins).
+   - **Same license across all files** → a single `rust-vendor/<crate>/*`
+     stanza. List every copyright holder as its own `Copyright:` line within
+     that one stanza.
+   - **Differing copyright holders do NOT split a stanza.** If two files share
+     the same license but have different holders, keep them in **one** stanza
+     with multiple `Copyright:` lines — do not create a second stanza just
+     because the copyright differs.
+   - **Exception — an entirely vendored/embedded subtree may get its own
+     stanza even at the same license.** If the crate bundles a distinct piece
+     of upstream third-party code in its own subdirectory (e.g.
+     `src/vendor/<lib>/*`, an embedded C library, a copied-in dependency), you
+     **may** give that subtree its own `Files:` stanza for clarity and
+     attribution, even when its license equals the rest of the crate. Use this
+     only for a genuinely separate, self-contained body of code — not just for
+     a different author within the crate's own sources. Add a brief `Comment:`
+     noting what the subtree is.
+   - **Different licenses across files** → one `Files:` stanza **per license**,
+     not a single stanza joined with `and`. E.g. most files are `Expat` but
+     `src/third_party/*` is `Apache-2` → a `rust-vendor/<crate>/*` stanza with
+     `License: Expat` followed by a `rust-vendor/<crate>/src/third_party/*`
+     stanza with `License: Apache-2`.
    - **Do not** create `Files:` stanzas for `LICENSE*`, `COPYING*`, or
      `UNLICENSE*` files. They are covered by the catch-all glob and their
      content is captured in stand-alone `License:` stanzas.
@@ -159,18 +180,28 @@ For the crate, follow this workflow precisely:
      - If a holder's line has no year at all, keep it yearless (do not
        fabricate one); list it after the dated holders.
 
-7. **Determine `or` vs `and`** for the `License:` field:
-   - Use `or` only when **every** source file in the stanza's scope declares
-     compatibility with **all** of the listed licenses (verified via SPDX
-     headers from step 4, e.g. each file says "SPDX-License-Identifier:
-     Apache-2.0 OR MIT").
-   - If some source files only declare a subset of the licenses (e.g. the
-     SPDX header says "SPDX-License-Identifier: MIT" but Cargo.toml says
-     "MIT OR Apache-2.0"), use **`and`** (conservative) — meaning the
-     collection as a whole requires both licenses because individual files
-     may not be usable under the other license.
-   - Add a `Comment:` field when using `and` due to inconsistency, e.g.:
-     `Comment: Cargo.toml declares MIT OR Apache-2.0, but some source files only state MIT`
+7. **Choose the `License:` expression per stanza** — `or`, separate stanzas,
+   or (rarely) `and`:
+   - **`or`** — use when a file itself offers a **choice** of licenses, i.e.
+     its SPDX header is `A OR B` (e.g. `SPDX-License-Identifier: Apache-2.0 OR
+     MIT` → `License: Apache-2 or Expat`). Every file in the stanza's scope
+     must offer all the listed alternatives.
+   - **Different actual licenses across files → separate stanzas, NOT `and`.**
+     If file X is MIT-only and file Y is Apache-2-only, do not write one stanza
+     `Expat and Apache-2`; split them into a stanza per license (per step 6).
+   - **`and`** — reserve for only two cases, and add a `Comment:` for the
+     first:
+     1. **Genuine uncertainty about a single file**: the file's own header and
+        `Cargo.toml` disagree and you cannot tell which governs the file —
+        e.g. `Cargo.toml` says `MIT OR Apache-2.0` but the file header only
+        says "Licensed under the MIT license". Conservatively require both
+        (`License: Expat and Apache-2`) and add:
+        `Comment: Cargo.toml declares MIT OR Apache-2.0, but some source files only state MIT`
+     2. **A confirmed true SPDX `AND`** conjunction (e.g. Cargo.toml/source
+        genuinely says `ISC AND OpenSSL`), where the work really does require
+        all the licenses simultaneously.
+     Do **not** use `and` merely because different files have different
+     licenses — that is the separate-stanza case above.
    - For compound SPDX expressions with grouping (mixed `AND`/`OR`), translate
      parentheses into commas — the grammar has no parentheses. e.g.
      `ISC AND (Apache-2.0 OR ISC)` → `Apache-2 or ISC, and ISC`.

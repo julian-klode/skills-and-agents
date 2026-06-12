@@ -103,12 +103,23 @@ Work through this checklist:
      Flag `MIT` (should be `Expat`). Prefer `Apache-2` over `Apache-2.0` in
      fragments, but do **not** fail a file solely for `Apache-2.0` — both
      parse under `cme`; note it as a minor consistency suggestion only.
-   - **Check `or` vs `and`**: if the `License:` field uses `or`, verify that
-     **every** source file within the stanza's scope declares compatibility
-     with **all** of the listed licenses. If some files only declare a subset
-     (e.g. file says "MIT" but License says "Expat or Apache-2"), flag it:
-     the License should use `and` instead, with a Comment explaining the
-     inconsistency.
+   - **Check `or` vs `and` vs split**:
+     - If a `License:` field uses **`or`**, verify every source file in the
+       stanza's scope actually offers all the listed alternatives (its SPDX
+       header is `A OR B`). If a file only offers a subset, flag it.
+     - If a `License:` field uses **`and`**, it is only correct for (a) genuine
+       uncertainty about a single file (Cargo.toml vs the file header disagree)
+       — which must carry a `Comment:` — or (b) a true SPDX `AND` conjunction.
+       If instead the `and` is just merging files that have **different**
+       licenses, **flag it**: the fix is to **split into separate `Files:`
+       stanzas**, one per actual license — not to keep `and`.
+     - Do **not** flag a stanza that merges files with the **same** license but
+       different copyright holders — that is correct (one stanza, multiple
+       `Copyright:` lines). Grouping is by license, never by copyright.
+     - Do **not** flag a separate stanza for an entirely vendored/embedded
+       subtree (e.g. a bundled upstream library in its own subdirectory) even
+       when its license matches the rest — splitting such a self-contained
+       subtree out for clarity/attribution is allowed.
    - **Check grammar**: flag any parentheses in a `License:` synopsis (the
      grammar requires commas, e.g. `Apache-2 or ISC, and ISC`), and any
      malformed `WITH` exception (must be lowercase `with`, a token, then the

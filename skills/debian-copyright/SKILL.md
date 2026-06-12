@@ -82,21 +82,37 @@ A file is made of stanzas separated by blank lines. There are three kinds:
 `Apache-2.0`), but `Apache-2` is the convention for the per-crate fragments,
 so use it for consistency.
 
-### `or` vs `and` for multi-license stanzas
+### Grouping stanzas, and `or` vs `and`
 
-When a crate has multiple licenses, you must verify source file headers
-before choosing `or` vs `and`:
+Stanzas are grouped by **license**, never by copyright. Files that share a
+license belong in one `Files:` stanza (with one `Copyright:` line per holder);
+files with different licenses go in separate stanzas. Then pick each stanza's
+`License:` expression:
 
-- Use **`or`** only when **every** source file in the stanza's scope
-  declares compatibility with **all** listed licenses (e.g. each file
-  header says "MIT OR Apache-2.0").
-- Use **`and`** (conservative) when some source files only declare a
-  subset of the licenses (e.g. file header says "Licensed under the MIT
-  license" but Cargo.toml says "MIT OR Apache-2.0"). This means the
-  collection requires both because individual files may not be usable
-  under the other license.
-- When using `and` due to inconsistency, always add a `Comment:` field:
-  `Comment: Cargo.toml declares X, but some source files only state Y`
+- **`or`** — use when a file itself offers a **choice**, i.e. its SPDX header
+  is `A OR B` (e.g. each file says `Apache-2.0 OR MIT` → `Apache-2 or Expat`).
+- **Different actual licenses across files → separate `Files:` stanzas**, one
+  per license (general glob first, specific path-globs after). **Do not** join
+  them with `and`. E.g. most files `Expat`, a vendored `src/third_party/*`
+  subtree `Apache-2` → two stanzas, not one `Expat and Apache-2` stanza.
+- **Same license, different copyright holders → ONE stanza** with multiple
+  `Copyright:` lines. Differing holders never split a stanza.
+- **Exception — an entirely vendored subtree may get its own stanza** even at
+  the same license. If the crate bundles a self-contained piece of upstream
+  third-party code in its own subdirectory (embedded C library, copied-in
+  dependency), you may give that subtree its own `Files:` stanza (with a brief
+  `Comment:`) for clarity/attribution. This is for a genuinely separate body of
+  code — not merely a different author inside the crate's own sources.
+- **`and`** — reserve for only two cases:
+  1. **Genuine uncertainty about a single file**: the file header and
+     `Cargo.toml` disagree and you cannot tell which governs (e.g. Cargo.toml
+     says `MIT OR Apache-2.0` but the file header only says "Licensed under the
+     MIT license"). Conservatively require both, and always add a `Comment:`:
+     `Comment: Cargo.toml declares X, but some source files only state Y`.
+  2. **A confirmed true SPDX `AND`** (e.g. `ISC AND OpenSSL`), where the work
+     genuinely requires all the licenses at once.
+  Never use `and` just because different files carry different licenses — that
+  is the separate-stanza case.
 
 ### Compound license expressions: use commas, never parentheses
 
@@ -318,11 +334,13 @@ actor, and all batching lives in the primary.
 | Specific globs before general ones                 | General first; specific overrides last (last wins)   |
 | Embedding Apache-2 full text                       | Use `/usr/share/common-licenses/Apache-2.0` pointer  |
 | Real copyright in License: stanza body                | Move to `Copyright:` field; only keep template placeholders like `<year>` |
-| Splitting stanzas with identical copyright+license | Merge into one stanza with multiple `Copyright:` lines |
+| Splitting a stanza because copyright holders differ | Group by license only; merge same-license files into one stanza with multiple `Copyright:` lines |
+| An entirely vendored/embedded subtree at the same license | May get its own `Files:` stanza (with a `Comment:`) for attribution — this is allowed, not an error |
 | Repeating the same holder with different years     | Collapse to one line with the min–max range (`2014-2020 Foo`) |
 | Missing `Copyright:` in a `Files:` stanza          | Every `Files:` stanza requires a `Copyright:` field  |
 | Cargo.toml `license` field is SPDX syntax          | Translate to DEP-5 (OR → or, fix short names per table) |
-| `or` used when source files are more restrictive     | Use `and` instead and add `Comment:` explaining the inconsistency |
+| Joining different per-file licenses with `and`     | Split into separate `Files:` stanzas, one per actual license (not one `A and B` stanza) |
+| Unsure which license governs a single file (Cargo.toml vs header disagree) | This is the one case for `and`: require both and add a `Comment:` explaining the uncertainty |
 | Parentheses in a `License:` synopsis (`(A or B) and C`) | Use a comma to group: `A or B, and C` (grammar has no parens) |
 | `WITH`/hyphen in an exception (`Apache-2 WITH LLVM-exception`) | Use `Apache-2 with LLVM exception` (lowercase `with`, space, word `exception`) |
 | Dropping an SPDX `OR` alternative (e.g. file says `Apache-2.0 OR ISC OR MIT`, only `Apache-2 or ISC` written) | Account for every alternative the source declares; add the missing license + stand-alone stanza |
