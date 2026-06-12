@@ -63,8 +63,71 @@ A file is made of stanzas separated by blank lines. There are three kinds:
 | LGPL-2.1-or-later               | **LGPL-2.1+**        |
 | CC0-1.0                         | **CC0-1.0**          |
 | public-domain (no copyright)    | **public-domain**    |
+| Apache-2.0 WITH LLVM-exception  | **Apache-2 with LLVM exception** |
 
 **Never use** `MIT`, `Apache-2.0`, `MIT License` etc. as DEP-5 short names.
+
+### `or` vs `and` for multi-license stanzas
+
+When a crate has multiple licenses, you must verify source file headers
+before choosing `or` vs `and`:
+
+- Use **`or`** only when **every** source file in the stanza's scope
+  declares compatibility with **all** listed licenses (e.g. each file
+  header says "MIT OR Apache-2.0").
+- Use **`and`** (conservative) when some source files only declare a
+  subset of the licenses (e.g. file header says "Licensed under the MIT
+  license" but Cargo.toml says "MIT OR Apache-2.0"). This means the
+  collection requires both because individual files may not be usable
+  under the other license.
+- When using `and` due to inconsistency, always add a `Comment:` field:
+  `Comment: Cargo.toml declares X, but some source files only state Y`
+
+### Compound license expressions: use commas, never parentheses
+
+The DEP-5 `License:` synopsis grammar accepted by `cme check dpkg-copyright`
+supports the operators `and`, `or`, `and/or` and **commas** for grouping —
+but it does **not** support parentheses. A bare `(` or a name glued to a
+paren such as `(Apache-2` will be rejected with
+*"license '(Apache-2' is not declared in a stand-alone License paragraph"*.
+
+When an SPDX expression needs grouping (mixed `AND`/`OR`), translate the
+parentheses into a comma. The comma binds looser than the adjacent operator,
+i.e. it terminates the preceding sub-expression:
+
+| SPDX (Cargo.toml)                  | DEP-5 synopsis                       |
+|------------------------------------|--------------------------------------|
+| `ISC AND (Apache-2.0 OR ISC)`      | `Apache-2 or ISC, and ISC`           |
+| `ISC AND (Apache-2.0 OR ISC) AND OpenSSL` | `Apache-2 or ISC, and ISC and OpenSSL` |
+| `(MIT OR Apache-2.0) AND Unicode-3.0` | `Expat or Apache-2, and Unicode-3.0` |
+
+Put the parenthesised `or`-group first, close it with a comma, then continue
+with the `and`-joined remainder. **Never emit `(` or `)` in a `License:`
+field.**
+
+### License exceptions (e.g. LLVM-exception)
+
+SPDX `WITH` exceptions must be written in the exact form the grammar parses:
+
+```
+license_exception: 'with' abbrev 'exception'
+```
+
+That is: the literal lowercase word `with`, a single whitespace-free token
+(the exception abbreviation), then the literal word `exception`. So
+`Apache-2.0 WITH LLVM-exception` becomes the short name
+**`Apache-2 with LLVM exception`** (lowercase `with`, the hyphen in
+`LLVM-exception` removed, a space before the trailing word `exception`).
+
+- Use the **same** short name both in the `Files:` synopsis and in the
+  stand-alone `License:` paragraph that carries the text.
+- Do **not** hyphenate (`LLVM-exception`), do **not** uppercase (`WITH`), and
+  do **not** append anything after `exception` — any of these break the
+  grammar.
+- Because the name itself is a multi-token operator expression, it can never
+  carry a disambiguating `-<suffix>`. If two crates have textually different
+  copies of the same exception license, treat them as one license (they
+  differ only in wording/whitespace) and keep a single stand-alone stanza.
 
 ### License text handling
 
@@ -135,7 +198,32 @@ For each crate directory:
    Collect the raw copyright lines grouped by the subdirectory or file set
    they belong to.
 
-4. **Identify groupings** — determine whether all files share one
+4. **Scan source files for explicit license declarations** — grep source
+   files for lines matching "licensed under", "License", "license",
+   "Apache", "MIT", "dual-license" and similar phrases in comment
+   headers. Note which licenses each file actually declares. This is
+   critical for choosing `or` vs `and`.
+
+5. **Cross-check with `licensecheck`** — run licensecheck recursively over
+   the crate and reconcile its findings with steps 2-4. This catches
+   licenses that manual inspection misses (embedded third-party code,
+   OpenSSL/SSLeay dual licenses, files lacking a top-level LICENSE).
+   ```
+   licensecheck -r --shortname-scheme=debian,spdx rust-vendor/<crate>
+   licensecheck -r rust-vendor/<crate> | sed 's/^[^:]*: //' | sort | uniq -c | sort -rn
+   ```
+   - **Every license licensecheck reports must be accounted for** — in the
+     broad `Files:` license expression or in a specific `Files:` stanza for
+     the subtree where it appears (use the per-file output to locate it).
+   - Map verbose names to DEP-5 short names ("Apache License 2.0" →
+     `Apache-2`, "MIT License" → `Expat`, "OpenSSL License" → `OpenSSL`,
+     "SSLeay" → `SSLeay`); licensecheck's " and/or " means `or`.
+   - licensecheck has false positives (`UNKNOWN`, `*No copyright*`,
+     `[generated file]`) and false negatives — investigate, but verify
+     against the actual file before adding or dropping a license. Do not
+     blindly copy its output.
+
+6. **Identify groupings** — determine whether all files share one
    copyright+license, or whether subdirectories/specific files differ. Common
    cases in Rust vendor crates:
    - All files: one author, one dual license → single `Files: rust-vendor/<crate>/*` stanza
@@ -144,8 +232,12 @@ For each crate directory:
      `UNLICENSE*` files. They are already covered by the catch-all
      `rust-vendor/<crate>/*` glob. Their content is captured through
      stand-alone `License:` stanzas.
+   - **Choose `or` vs `and`**: use `or` only when every source file
+     in the stanza's scope declares compatibility with all listed
+     licenses. Otherwise use `and` with a `Comment:` explaining the
+     inconsistency between Cargo.toml and source file headers.
 
-5. **Write the file** — produce `debian/copyright.in.d/<crate-name>` with:
+7. **Write the file** — produce `debian/copyright.in.d/<crate-name>` with:
    ```
    Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
    Source: <url from Cargo.toml>
@@ -161,13 +253,13 @@ For each crate directory:
     <full text or system pointer>
    ```
 
-6. **Copyright year sourcing** — years come from (in order of preference):
+8. **Copyright year sourcing** — years come from (in order of preference):
    a. Explicit copyright lines in source files
    b. The year in a `LICENSE-MIT` / `LICENSE-Apache` etc. file
    c. The `authors` field in `Cargo.toml` if it contains a year
    d. Omit the year only if genuinely unavailable in any of the above
 
-7. **Batch mode** — iterate over every direct subdirectory of `rust-vendor/`
+9. **Batch mode** — iterate over every direct subdirectory of `rust-vendor/`
    and process each one. Report progress crate by crate.
 
 ---
@@ -289,6 +381,9 @@ For **batch mode** (whole `rust-vendor/` directory):
 | Splitting stanzas with identical copyright+license | Merge into one stanza with multiple `Copyright:` lines |
 | Missing `Copyright:` in a `Files:` stanza          | Every `Files:` stanza requires a `Copyright:` field  |
 | Cargo.toml `license` field is SPDX syntax          | Translate to DEP-5 (OR → or, fix short names per table) |
+| `or` used when source files are more restrictive     | Use `and` instead and add `Comment:` explaining the inconsistency |
+| Parentheses in a `License:` synopsis (`(A or B) and C`) | Use a comma to group: `A or B, and C` (grammar has no parens) |
+| `WITH`/hyphen in an exception (`Apache-2 WITH LLVM-exception`) | Use `Apache-2 with LLVM exception` (lowercase `with`, space, word `exception`) |
 
 ---
 

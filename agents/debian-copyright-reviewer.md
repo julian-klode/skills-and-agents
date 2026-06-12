@@ -18,7 +18,13 @@ Work through this checklist:
 
 1. Re-read the generated file in full.
 
-2. For every `Files:` stanza:
+2. Re-read `Cargo.toml` for the crate's `license` field and `repository`/`homepage`.
+
+3. Grep source files in the crate for explicit license declarations in headers
+   (lines matching "licensed under", "License", "license", "Apache", "MIT",
+   "dual-license" in comments). Note which licenses each file declares.
+
+4. For every `Files:` stanza:
    - Confirm the glob patterns correspond to paths that actually exist in the
      crate directory.
    - For each `Copyright:` line, verify the named holder appears in a license
@@ -29,8 +35,14 @@ Work through this checklist:
      intentional that these are covered only by the catch-all glob.
    - Verify the `License:` short name matches the actual license text.
      Flag `MIT` (should be `Expat`), `Apache-2.0` (should be `Apache-2`), etc.
+   - **Check `or` vs `and`**: if the `License:` field uses `or`, verify that
+     **every** source file within the stanza's scope declares compatibility
+     with **all** of the listed licenses. If some files only declare a subset
+     (e.g. file says "MIT" but License says "Expat or Apache-2"), flag it:
+     the License should use `and` instead, with a Comment explaining the
+     inconsistency.
 
-3. For every stand-alone `License:` stanza:
+5. For every stand-alone `License:` stanza:
    - If it contains full text: verify the text is a correct subset of the
      crate's actual license file.
      **Flag any title line** (e.g. "The MIT License (MIT)", "ISC License").
@@ -43,13 +55,13 @@ Work through this checklist:
    - If it contains a system pointer: confirm the license is one that has a
      system copy (Apache-2, GPL-*, LGPL-*).
 
-4. Check `Source:` is a URL actually present in `Cargo.toml` (`repository` or
+6. Check `Source:` is a URL actually present in `Cargo.toml` (`repository` or
    `homepage`). Flag if it was invented.
 
-5. Flag any `Copyright:` holder not found in any file in the crate or in
+7. Flag any `Copyright:` holder not found in any file in the crate or in
    `Cargo.toml` `authors` as **hallucinated**.
 
-6. **Check completeness** — if **source files** (`.rs`, `.c`, `.h`, etc. —
+8. **Check completeness** — if **source files** (`.rs`, `.c`, `.h`, etc. —
    not `LICENSE*`/`COPYING*`/`UNLICENSE*`) contain copyright lines that are
    not reflected anywhere in the generated `Files:` stanzas, flag them as
    missing.
