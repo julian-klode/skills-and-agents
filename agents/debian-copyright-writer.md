@@ -26,6 +26,11 @@ You own the file end to end: you draft it, you have it critiqued by the
 `debian-copyright-reviewer` agent (the critic), and **you apply every fix
 yourself**. Editing is your job.
 
+**Never consult online resources** (crates.io, GitHub, docs.rs, search
+engines, etc.) to determine the license or copyright of a vendored crate.
+The upstream project may have changed licenses since the code was vendored;
+only the files actually present in the vendored tree are authoritative.
+
 ## Your task
 
 You will be given **one** crate directory path, such as
@@ -240,32 +245,39 @@ For the crate, follow this workflow precisely:
     so do **not** add a `Comment:` identifying the crate. Cross-crate "Used by:"
     comments on license stanzas are generated automatically by the merge tool.
 
- 11. For stand-alone `License:` stanzas:
-       - Apache-2, GPL-2, GPL-2+, GPL-3, GPL-3+, LGPL-2.1, LGPL-2.1+: use the
-         Debian common-licenses **paragraph pointer**, not just the bare file
-         path. The full two-line form is required:
-         ```
-         License: Apache-2
-          On Debian systems, the full text of the Apache License Version 2.0
-          can be found in the file `/usr/share/common-licenses/Apache-2.0'.
-         ```
-         Adjust the license name and path for each:
-         - Apache-2: `…the Apache License Version 2.0…/usr/share/common-licenses/Apache-2.0'`
-         - GPL-2 / GPL-2+: `…the GNU General Public License version 2…/usr/share/common-licenses/GPL-2'`
-         - GPL-3 / GPL-3+: `…the GNU General Public License version 3…/usr/share/common-licenses/GPL-3'`
-         - LGPL-2.1 / LGPL-2.1+: `…the GNU Lesser General Public License version 2.1…/usr/share/common-licenses/LGPL-2.1'`
-          Never write just the file path on a single line — always use the
-          two-line paragraph form shown above.
-      - All others: embed the license text from the crate's license file, with
-        blank lines replaced by ` .` (one space then a dot), and **every**
-        continuation line indented by exactly **one** leading space.
-        **Strip** any title line (e.g. "The MIT License (MIT)", "ISC License").
-        **Strip any real copyright notice** with a specific name and year
-        (e.g. "Copyright (c) 2015 Andrew Gallant") — these belong in the
-        `Copyright:` field, not duplicated here.
-        **Keep template/placeholder** copyright lines (e.g. "Copyright (C)
-        <year> <name of author>") — these are license boilerplate, not actual
-        copyright statements for the work.
+ 11. For stand-alone `License:` stanzas, decide between the system pointer
+     and embedding based on whether the license has a system copy:
+
+     **Run `ls /usr/share/common-licenses/`** to see which licenses have
+     system copies on this machine. If the license you need is listed there,
+     use the Debian common-licenses **paragraph pointer** — never embed the
+     full text, and never write just the bare file path. The required form
+     is the two-line paragraph:
+
+     ```
+     License: <short-name>
+      On Debian systems, the full text of the <full license name>
+      can be found in the file `/usr/share/common-licenses/<filename>'.
+     ```
+
+     Construct `<full license name>` from the license's actual title
+     (e.g. `Apache License Version 2.0`, `Mozilla Public License Version 2.0`,
+     `GNU General Public License version 3`, etc.) and `<filename>` from the
+     exact entry in `/usr/share/common-licenses/`. The filename may differ
+     from the DEP-5 short name (e.g. short name `MPL-2`, filename `MPL-2.0`;
+     short name `Apache-2`, filename `Apache-2.0`).
+
+     If the license is **not** in `/usr/share/common-licenses/`, embed the
+     license text from the crate's license file, with blank lines replaced
+     by ` .` (one space then a dot), and **every** continuation line
+     indented by exactly **one** leading space.
+     **Strip** any title line (e.g. "The MIT License (MIT)", "ISC License").
+     **Strip any real copyright notice** with a specific name and year
+     (e.g. "Copyright (c) 2015 Andrew Gallant") — these belong in the
+     `Copyright:` field, not duplicated here.
+     **Keep template/placeholder** copyright lines (e.g. "Copyright (C)
+     <year> <name of author>") — these are license boilerplate, not actual
+     copyright statements for the work.
 
 12. Write the result to `debian/copyright.in.d/<crate-name>`.
 

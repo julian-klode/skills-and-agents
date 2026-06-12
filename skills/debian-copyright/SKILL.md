@@ -20,6 +20,11 @@ returns a verdict. The actor and critic talk directly to each other — the
 writer invokes the reviewer, applies the fixes itself, and re-invokes the
 reviewer until it passes.
 
+**Never consult online resources** (crates.io, GitHub, docs.rs, search
+engines, etc.) to determine the license or copyright of a vendored crate.
+The upstream project may have changed licenses since the code was vendored;
+only the files actually present in the vendored tree are authoritative.
+
 ---
 
 ## 1. DEP-5 format reference
@@ -162,34 +167,25 @@ That is: the literal lowercase word `with`, a single whitespace-free token
 
 ### License text handling
 
-- **Apache-2**: use the system copy pointer:
-  ```
-  License: Apache-2
-   On Debian systems, the full text of the Apache License Version 2.0
-   can be found in the file `/usr/share/common-licenses/Apache-2.0'.
-  ```
-- **GPL-2, GPL-2+**:
-  ```
-  License: GPL-2
-   On Debian systems, the full text of the GNU General Public License version 2
-   can be found in the file `/usr/share/common-licenses/GPL-2'.
-  ```
-- **GPL-3, GPL-3+**:
-  ```
-  License: GPL-3
-   On Debian systems, the full text of the GNU General Public License version 3
-   can be found in the file `/usr/share/common-licenses/GPL-3'.
-  ```
-- **LGPL-2.1, LGPL-2.1+**:
-  ```
-  License: LGPL-2.1
-   On Debian systems, the full text of the GNU Lesser General Public
-   License version 2.1 can be found in the file
-   `/usr/share/common-licenses/LGPL-2.1'.
-  ```
-- **All other licenses** (Expat, ISC, BSD-*, Unlicense, CC0, etc.):
-  embed the license text from the crate's license file, with blank
-  lines replaced by ` .` (a space then a dot).
+Run `ls /usr/share/common-licenses/` to see which licenses have system copies.
+Any license present there **must** use the paragraph pointer — never embed the
+full text, and never write just the bare file path. The required form is:
+
+```
+License: <short-name>
+ On Debian systems, the full text of the <full license name>
+ can be found in the file `/usr/share/common-licenses/<filename>'.
+```
+
+Construct `<full license name>` from the license's actual title and
+`<filename>` from the exact entry in `/usr/share/common-licenses/`. The
+filename may differ from the DEP-5 short name (e.g. short name `MPL-2`,
+filename `MPL-2.0`; short name `Apache-2`, filename `Apache-2.0`).
+
+For licenses **not** in `/usr/share/common-licenses/` (Expat, ISC,
+BSD-2-clause, BSD-3-clause, Unlicense, etc.): embed the license text from
+the crate's license file, with blank lines replaced by ` .` (a space then
+a dot).
   **Strip** any title line (e.g. "The MIT License (MIT)", "ISC License")
   — these are section headers that would prevent deduplication.
   **Strip any real copyright notice** with a specific name and year
@@ -386,8 +382,9 @@ actor, and all batching lives in the primary.
 | `Source: TODO`                                     | Always populate from `Cargo.toml`                    |
 | Glob missing subdirectories                        | Use `rust-vendor/foo/*` to cover all depths          |
 | Specific globs before general ones                 | General first; specific overrides last (last wins)   |
-| Embedding Apache-2 full text                       | Use the Debian common-licenses paragraph pointer (two-line form, not bare path) |
+| Embedding Apache-2 full text                       | Use the Debian common-licenses paragraph pointer (run `ls /usr/share/common-licenses/` to check) |
 | Writing just the bare path for common-licenses (e.g. `License: GPL-2\n /usr/share/common-licenses/GPL-2`) | Use the two-line paragraph form: `On Debian systems, the full text of the… can be found in the file…' |
+| Embedding full text of a license that exists in `/usr/share/common-licenses/` | Run `ls /usr/share/common-licenses/` and use the paragraph pointer for any license present there |
 | Real copyright in License: stanza body                | Move to `Copyright:` field; only keep template placeholders like `<year>` |
 | Splitting a stanza because copyright holders differ | Group by license only; merge same-license files into one stanza with multiple `Copyright:` lines |
 | An entirely vendored/embedded subtree at the same license | May get its own `Files:` stanza (with a `Comment:`) for attribution — this is allowed, not an error |
@@ -407,6 +404,7 @@ actor, and all batching lives in the primary.
 | Trusting licensecheck `Copyright:` lines as complete | licensecheck misses some statements; grep the files yourself (`copyright`, `(c)`, `©`) and add any missing holders |
 | Suffixing or "fixing" a license whose text matches another crate's | The merge step deduplicates identical texts and renames clashes automatically |
 | Not validating grammar at all                       | The critic runs `cme check dpkg-copyright -file <fragment>` — the real gate |
+| Consulting online resources (crates.io, GitHub, etc.) for license/copyright info | Never do this — upstream may have changed licenses since vendoring; only the vendored tree is authoritative |
 
 ---
 
