@@ -70,12 +70,18 @@ Work through this checklist:
 
 3. Re-read `Cargo.toml` for the crate's `license` field and `repository`/`homepage`.
 
-4. Grep source files in the crate for explicit license declarations in headers
-   (lines matching "licensed under", "License", "license", "Apache", "MIT",
-   "dual-license", and `SPDX-License-Identifier` in comments). Note which
-   licenses each file declares. SPDX headers are authoritative: a file whose
-   header says `Apache-2.0 OR ISC OR MIT` declares all three, even if
-   licensecheck collapses it to one.
+4. Grep source files in the crate yourself, for **both**:
+   - **Copyright statements** — lines matching `[Cc]opyright`, `(C)`, `(c)`, or
+     `©` in file headers and in `LICENSE*`/`COPYING*`/`NOTICE*` files
+     (e.g. `rg -n -i -e 'copyright' -e '\(c\)' -e '©' <crate-dir>`). Collect
+     every distinct holder. licensecheck (and therefore the writer) **misses
+     some copyright statements**, so this independent grep is how you catch a
+     holder that was omitted — flag any such holder as missing in step 9.
+   - **License declarations** — lines matching "licensed under", "License",
+     "license", "Apache", "MIT", "dual-license", and `SPDX-License-Identifier`
+     in comments. Note which licenses each file declares. SPDX headers are
+     authoritative: a file whose header says `Apache-2.0 OR ISC OR MIT`
+     declares all three, even if licensecheck collapses it to one.
 
 5. For every `Files:` stanza:
    - Confirm the glob patterns correspond to paths that actually exist in the
@@ -142,11 +148,13 @@ Work through this checklist:
 9. **Check completeness** — if **source files** (`.rs`, `.c`, `.h`, etc. —
    not `LICENSE*`/`COPYING*`/`UNLICENSE*`) declare a copyright holder or a
    license (including any alternative in an SPDX `OR` expression) that is not
-   reflected anywhere in the generated stanzas, flag it as missing. Use
-   `licensecheck` and source SPDX headers to cross-check, but verify against
-   the actual file before flagging — note licensecheck false positives
-   (`UNKNOWN`, `*No copyright*`, `[generated file]`, an OpenSSL advertising
-   clause misread as `Apache-1.0`) and do not demand they be added.
+   reflected anywhere in the generated stanzas, flag it as missing. Base this
+   on **your own grep from step 4** (the authoritative cross-check, since
+   licensecheck misses copyright statements), using `licensecheck` only as a
+   secondary hint. Verify against the actual file before flagging — note
+   licensecheck false positives (`UNKNOWN`, `*No copyright*`,
+   `[generated file]`, an OpenSSL advertising clause misread as `Apache-1.0`)
+   and do not demand they be added.
 
 ## Output format
 

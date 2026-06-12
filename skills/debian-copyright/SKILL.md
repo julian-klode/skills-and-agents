@@ -210,15 +210,16 @@ the tree. Batch coordination is the primary agent's responsibility
 (section 3).
 
 In outline, the actor: reads `Cargo.toml` and the top-level license files;
-runs `licensecheck --merge-licenses -r --deb-machine` **once** (it already
-emits Debian short names and per-file copyright, but its header stanza and its
-`Copyright: NONE`/`License: UNKNOWN` rows must be discarded) for the primary
-copyright statements and license hints; greps source files for SPDX headers
-and reconciles them with licensecheck; cross-checks against `Cargo.toml` and
-the license files; writes the DEP-5 file; then runs the actor-critic loop
-(invoke critic → apply fixes → re-invoke) for up to 3 rounds. Full
-step-by-step instructions are in the `debian-copyright-writer` agent
-definition.
+runs `licensecheck --merge-licenses -r --deb-machine` **once** as a starting
+point (it emits Debian short names and per-file copyright, but its header
+stanza and its `Copyright: NONE`/`License: UNKNOWN` rows must be discarded, and
+it misses some copyright statements); then **greps the files itself for both
+copyright statements and license declarations (SPDX headers)** and reconciles
+them with licensecheck, adding any holders or licenses licensecheck missed;
+cross-checks against `Cargo.toml` and the license files; writes the DEP-5 file;
+then runs the actor-critic loop (invoke critic → apply fixes → re-invoke) for
+up to 3 rounds. Full step-by-step instructions are in the
+`debian-copyright-writer` agent definition.
 
 ### `debian-copyright-reviewer` (the critic)
 
@@ -330,6 +331,7 @@ actor, and all batching lives in the primary.
 | Re-running the batch from scratch                   | Resume: skip crates whose fragment exists and passes `cme check`; only (re)generate missing/failing ones |
 | Hand-writing a crate-identifying `Comment:` in the header | The merge step discards the header stanza; let it auto-generate `Used by:` comments |
 | Emitting stanzas for `Copyright: NONE` / `License: UNKNOWN` rows | Drop them; they are metadata/build files covered by the catch-all glob |
+| Trusting licensecheck `Copyright:` lines as complete | licensecheck misses some statements; grep the files yourself (`copyright`, `(c)`, `©`) and add any missing holders |
 | Suffixing or "fixing" a license whose text matches another crate's | The merge step deduplicates identical texts and renames clashes automatically |
 | Not validating grammar at all                       | The critic runs `cme check dpkg-copyright -file <fragment>` — the real gate |
 
