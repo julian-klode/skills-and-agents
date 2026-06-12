@@ -15,31 +15,15 @@ tools:
   task: false
 permission:
   edit: deny
-  # Default to "ask" (not "deny") so an unanticipated but harmless inspection
-  # command prompts instead of silently hard-failing the review. The reviewer
-  # cannot edit anything (edit: deny, write: false), so a looser bash default is
-  # safe. Note: opencode matches PARSED commands, so a compound like
-  # `cd x && cme ...` is matched per-segment — keep invocations as bare commands
-  # (the bash tool already runs in the project cwd) and allow `cd`/`test` for the
-  # rare case the model reaches for them.
-  bash:
-    "*": ask
-    "cme *": allow
-    "licensecheck *": allow
-    "rg *": allow
-    "grep *": allow
-    "sed *": allow
-    "sort *": allow
-    "uniq *": allow
-    "head *": allow
-    "tail *": allow
-    "cat *": allow
-    "ls *": allow
-    "find *": allow
-    "wc *": allow
-    "test *": allow
-    "dpkg-parsechangelog *": allow
-    "cd *": allow
+  # bash: allow. The critic is safe to give full bash because it is read-only
+  # by construction: edit: deny + write: false make file modification
+  # impossible, and task: false means it cannot spawn other agents. Allowing
+  # bash (rather than a deny-default allow-list) avoids the invisible-prompt
+  # hang an "ask" would cause in a subagent, and stops harmless command forms
+  # (pipes, `2>&1`, `; echo $?`, etc.) from tripping a deny-default. It can read
+  # and run inspection commands like `cme`/`licensecheck`, but it cannot change
+  # anything.
+  bash: allow
 ---
 
 You are an expert Debian developer acting as the **critic** in an actor-critic
@@ -72,12 +56,9 @@ Work through this checklist:
    too. It catches parenthesised `License:` synopses, undeclared license names,
    malformed `WITH` exceptions, and even `MIT` used where `Expat` is expected —
    and exits non-zero on failure.
-   - **Invoke it as a bare command**: `cme check dpkg-copyright -file <path>`.
-     Do **not** prefix it with `cd ... &&` or pipe it — opencode matches parsed
-     commands, and a `cd`/pipe segment can trip the permission gate. The bash
-     tool already runs in the project root, so a relative fragment path works
-     as-is. If you need a different directory, use the bash tool's `workdir`
-     parameter rather than `cd`.
+   - Run it from the project root (the bash tool's default cwd), so a relative
+     fragment path works as-is. If you need a different directory, use the bash
+     tool's `workdir` parameter.
    - If `cme` exits non-zero, the file **fails**: quote each `cme` complaint in
      your verdict with the exact corrected text.
    - `cme` warnings (e.g. deprecation notices) that do not cause a non-zero
