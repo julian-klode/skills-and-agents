@@ -174,234 +174,54 @@ Always populate from `Cargo.toml`: use `repository` if present, else
 
 ---
 
-## 2. Agent: `debian-copyright-writer` (the actor)
+## 2. The two agents
 
-**Role**: actor in the actor-critic loop.
-**Mode**: subagent
-**Tools**: `read`, `write`, `edit`, `bash`, `grep`, `glob`, `task` (so it can
-invoke the critic).
+The work is split between two subagents whose full operating instructions live
+in their own agent definitions. This skill provides the shared DEP-5 reference
+(section 1), orchestration (section 3), pitfalls (section 4), and an example
+(section 5) that both agents rely on. **Do not duplicate the agents' workflows
+here** — edit the agent files when the workflow changes.
+
+### `debian-copyright-writer` (the actor)
+
+**Role**: drafts `debian/copyright.in.d/<crate-name>`, then drives the review
+loop until the critic passes. It owns the file end to end — it drafts, has the
+critic review, and **applies every fix itself**. Editing is the actor's job.
+
 **Input**: one crate directory path (e.g. `rust-vendor/aho-corasick`) or
 `rust-vendor/` for batch mode over all crates.
-**Output**: writes `debian/copyright.in.d/<crate-name>` for each crate, then
-drives the review loop until the critic passes.
 
-The writer owns the file end to end: it drafts the file, has it critiqued, and
-**applies every fix itself**. Editing is the actor's job.
+In outline, the actor: reads `Cargo.toml` and the top-level license files;
+runs `licensecheck --merge-licenses -r --deb-machine` **once** for
+authoritative copyright statements and license hints; greps source files for
+SPDX headers and reconciles them with licensecheck; cross-checks against
+`Cargo.toml` and the license files; writes the DEP-5 file; then runs the
+actor-critic loop (invoke critic → apply fixes → re-invoke) for up to 3 rounds.
+Full step-by-step instructions are in the `debian-copyright-writer` agent
+definition.
 
-### Writer workflow — Phase 1: draft
+### `debian-copyright-reviewer` (the critic)
 
-For each crate directory:
+**Role**: audits the generated file **read-only** and returns a strict verdict.
+It never edits the file and never invokes another agent — it only judges; the
+actor applies. Its `bash` permission is narrowed to inspection commands
+(`licensecheck`, `cme`, `rg`/`grep`, `sed`, `sort`, `uniq`, `head`, `cat`,
+`ls`, `find`).
 
-1. **Read `Cargo.toml`** — extract:
-   - `name` (the crate name; use as the output filename)
-   - `version`
-   - `authors` (list of `"Name <email>"` strings)
-   - `license` (SPDX expression, e.g. `"MIT OR Apache-2.0"`)
-   - `repository` and/or `homepage` (for `Source:`)
+**Input**: the path to `debian/copyright.in.d/<crate>` and the crate directory.
 
-2. **Read all top-level license/copying files** — read the actual text of
-   every file matching `LICENSE*`, `COPYING*`, `UNLICENSE*` at the crate
-   root. Identify each file's license by its text content, not just its name.
-
-3. **Scan source files for copyright headers** — grep every `.rs`, `.c`,
-   `.h`, `.py`, `.go`, and similar source file (not binaries, not
-   `.cargo-checksum.json`) for lines matching `[Cc]opyright`, `©`, or `\(c\)`.
-   Collect the raw copyright lines grouped by the subdirectory or file set
-   they belong to.
-
-4. **Scan source files for explicit license declarations** — grep source
-   files for lines matching "licensed under", "License", "license",
-   "Apache", "MIT", "dual-license" and similar phrases in comment
-   headers. Note which licenses each file actually declares. This is
-   critical for choosing `or` vs `and`.
-
-5. **Cross-check with `licensecheck`** — run licensecheck recursively over
-   the crate and reconcile its findings with steps 2-4. This catches
-   licenses that manual inspection misses (embedded third-party code,
-   OpenSSL/SSLeay dual licenses, files lacking a top-level LICENSE).
-   ```
-   licensecheck -r --shortname-scheme=debian,spdx rust-vendor/<crate>
-   licensecheck -r rust-vendor/<crate> | sed 's/^[^:]*: //' | sort | uniq -c | sort -rn
-   ```
-   - **Every license licensecheck reports must be accounted for** — in the
-     broad `Files:` license expression or in a specific `Files:` stanza for
-     the subtree where it appears (use the per-file output to locate it).
-   - Map verbose names to DEP-5 short names ("Apache License 2.0" →
-     `Apache-2`, "MIT License" → `Expat`, "OpenSSL License" → `OpenSSL`,
-     "SSLeay" → `SSLeay`); licensecheck's " and/or " means `or`.
-   - licensecheck has false positives (`UNKNOWN`, `*No copyright*`,
-     `[generated file]`) and false negatives — investigate, but verify
-     against the actual file before adding or dropping a license. Do not
-     blindly copy its output.
-
-6. **Identify groupings** — determine whether all files share one
-   copyright+license, or whether subdirectories/specific files differ. Common
-   cases in Rust vendor crates:
-   - All files: one author, one dual license → single `Files: rust-vendor/<crate>/*` stanza
-   - Embedded third-party code: a subtree with different copyright → separate stanza
-   - **Never** create `Files:` stanzas for `LICENSE*`, `COPYING*`, or
-     `UNLICENSE*` files. They are already covered by the catch-all
-     `rust-vendor/<crate>/*` glob. Their content is captured through
-     stand-alone `License:` stanzas.
-   - **Choose `or` vs `and`**: use `or` only when every source file
-     in the stanza's scope declares compatibility with all listed
-     licenses. Otherwise use `and` with a `Comment:` explaining the
-     inconsistency between Cargo.toml and source file headers.
-
-7. **Write the file** — produce `debian/copyright.in.d/<crate-name>` with:
-   ```
-   Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-   Source: <url from Cargo.toml>
-   Comment: *** only: rust-vendor/<crate-name> ***
-
-   Files: rust-vendor/<crate-name>/*
-   Copyright: <year(s)> <holder(s) from license files or authors field>
-   License: <DEP-5 short name>
-
-   [additional Files: stanzas for specific files/subdirs if needed]
-
-   License: <short-name>
-    <full text or system pointer>
-   ```
-
-8. **Copyright year sourcing** — years come from (in order of preference):
-   a. Explicit copyright lines in source files
-   b. The year in a `LICENSE-MIT` / `LICENSE-Apache` etc. file
-   c. The `authors` field in `Cargo.toml` if it contains a year
-   d. Omit the year only if genuinely unavailable in any of the above
-
-9. **Batch mode** — iterate over every direct subdirectory of `rust-vendor/`
-   and process each one. Run the full draft + actor-critic loop for each crate
-   before moving to the next. Report progress crate by crate.
-
-### Writer workflow — Phase 2: the actor-critic loop
-
-After writing the draft, the writer (actor) **does not stop**. It runs this
-loop, talking directly to the reviewer (critic):
-
-1. **Invoke the critic** via the `task` tool, calling the
-   `debian-copyright-reviewer` agent with the path to the file just written and
-   the crate directory path. Ask for its `VERDICT`.
-
-2. **Read the verdict.**
-   - `VERDICT: PASS` → the loop is done; go to "Finishing" below.
-   - `VERDICT: FAIL` → the critic returns a numbered list of issues, each
-     citing the field/line, what is wrong, and the exact fix. Continue.
-
-3. **Apply every fix yourself** (the actor edits; the critic never does),
-   making the **minimal targeted edit** per issue, using only information
-   found in the crate's actual files:
-   - Wrong copyright holder → replace with exact text from the source/license
-     file.
-   - Hallucinated copyright holder → remove that line entirely.
-   - Missing copyright holder → add the `Copyright:` line, verbatim from the
-     source file where it was found.
-   - Wrong license short name → replace with the correct DEP-5 short name.
-   - Missing license (declared in source but absent) → add it to the relevant
-     `Files:` stanza's `License:` expression and add the matching stand-alone
-     `License:` stanza, or create a dedicated `Files:` stanza for the subtree
-     that carries it — whichever most accurately reflects the source.
-   - Wrong `Source:` URL → replace with the URL from `Cargo.toml`.
-   - Wrong/generic license text → replace with verbatim text from the crate's
-     actual license file; fix continuation-line indentation (exactly one
-     leading space per body line; blank lines as ` .`).
-   - `or`/`and` errors, parenthesised synopses, malformed `WITH` exceptions →
-     fix per the grammar rules in section 1.
-
-   **Never add information not present in the crate's actual files.** If a fix
-   would require inventing information, add a `Comment:` noting the issue and
-   flag it in the final report for human review.
-
-4. **Re-invoke the critic** on the updated file (back to step 1).
-
-5. **Loop control** — repeat edit→review up to **3 total review rounds**. If
-   the critic still returns `VERDICT: FAIL` after 3 rounds, stop and escalate
-   the remaining issues to the user. Never loop forever; never silence the
-   critic by deleting legitimate content.
-
-### Finishing
-
-Once the critic returns `VERDICT: PASS` (or 3 rounds are exhausted), report:
-- The path of each file written.
-- A one-line copyright + license summary per crate.
-- Any license licensecheck reported but you deliberately excluded, and why.
-- The final verdict, the number of review rounds, and a short summary of the
-  changes the critic prompted.
-
----
-
-## 3. Agent: `debian-copyright-reviewer` (the critic)
-
-**Role**: critic in the actor-critic loop.
-**Mode**: subagent
-**Tools**: `read`, `bash`, `grep`, `glob` only — **`write: false`,
-`edit: false`, `task: false`**. The critic is strictly read-only: it never
-edits the file and never invokes another agent. Its `bash` permission is
-narrowed to inspection commands (`licensecheck`, `cme`, `rg`/`grep`, `sed`,
-`sort`, `uniq`, `head`, `cat`, `ls`, `find`).
-**Input**: path to `debian/copyright.in.d/<crate>` and the crate directory.
-**Output**: a structured review report the actor can act on directly. Either
-`VERDICT: PASS` or `VERDICT: FAIL` with a numbered list of issues, each citing:
-- The field and line in `debian/copyright.in.d/<crate>` that is wrong
-- What was found in the actual source vs. what was written
-- The exact fix required
+**Output**: either `VERDICT: PASS`, or `VERDICT: FAIL` with a numbered list of
+issues, each citing the field/line that is wrong, what the source actually says
+vs. what was written, and the exact fix required.
 
 Locking the critic read-only is deliberate: it eliminates the risk of the
 critic hallucinating formatting errors or truncating the file while trying to
-"fix" it. The critic only judges; the actor applies.
-
-### Reviewer workflow
-
-1. **Re-read the generated file** in full.
-
-2. **For every `Files:` stanza**:
-   - Verify the glob pattern(s) actually match real paths in the crate.
-   - Verify each `Copyright:` line names a holder that appears in a license
-     file or source file within that glob's scope. Accept years from
-     `LICENSE*`/`COPYING*`/`UNLICENSE*` files as authoritative without
-     requiring them to appear in every source file.
-   - Verify the `License:` short name matches the actual text of the
-     corresponding license file. Flag wrong short names (e.g. `MIT` instead
-     of `Expat`).
-
-3. **For every stand-alone `License:` stanza**:
-   - If it contains a full text: verify the text matches the crate's actual
-     license file (not a generic copy-paste that differs from what is present).
-   - If it contains a system pointer: verify the license is indeed one that
-     has a system copy (`Apache-2`, `GPL-2`, `GPL-3`, `LGPL-2.1`, etc.).
-
-4. **Check `Source:`** — verify the URL is present in `Cargo.toml`
-   (`repository` or `homepage`). Flag if it differs.
-
-5. **Check for hallucinated holders** — if a `Copyright:` line names someone
-   not found anywhere in the crate's files or `Cargo.toml` `authors`, flag it
-   as hallucinated.
-
-6. **Check completeness** — if source files declare a copyright holder or a
-   license (including any alternative in an SPDX `OR` expression) that is not
-   reflected anywhere in the generated stanzas, flag it as missing. SPDX
-   headers are authoritative even when licensecheck collapses an `OR`
-   expression to one license; cross-check with `licensecheck` but verify the
-   actual file before flagging (ignore false positives such as `UNKNOWN`,
-   `*No copyright*`, `[generated file]`, and OpenSSL advertising clauses
-   misread as `Apache-1.0`).
-
-7. **Output the verdict** — the actor applies the fixes, so make each issue
-   self-contained and actionable:
-   ```
-   VERDICT: PASS
-   ```
-   or:
-   ```
-   VERDICT: FAIL
-   Issues:
-   1. [field/line] "[wrong text]" — [reason] — fix: [exact corrected text]
-   2. ...
-   ```
+"fix" it. Full checklist is in the `debian-copyright-reviewer` agent
+definition.
 
 ---
 
-## 4. Orchestration: the actor-critic loop
+## 3. Orchestration: the actor-critic loop
 
 The actor and critic talk directly to each other; the writer (actor) drives the
 loop. A coordinating primary agent only kicks it off and reports the result.
@@ -428,7 +248,7 @@ crate by crate.
 
 ---
 
-## 5. Common pitfalls reference
+## 4. Common pitfalls reference
 
 | Pitfall                                            | Correct behaviour                                    |
 |----------------------------------------------------|------------------------------------------------------|
@@ -452,7 +272,7 @@ crate by crate.
 
 ---
 
-## 6. Example output
+## 5. Example output
 
 For `rust-vendor/aho-corasick` (Unlicense OR MIT, author Andrew Gallant):
 
