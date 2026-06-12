@@ -1,6 +1,9 @@
 ---
 description: Critic in the debian/copyright actor-critic loop. Reviews a debian/copyright.in.d/<crate> file (read-only) for hallucinated or incorrect copyright statements, wrong license short names, missing licenses/holders, and DEP-5 grammar errors, then returns a strict PASS/FAIL verdict.
 mode: subagent
+# Lowest temperature: the critic must be as deterministic and literal as
+# possible (0.1, below the writer's 0.2) so its verdicts are reproducible and it
+# does not hallucinate problems or invent corrections.
 temperature: 0.1
 tools:
   read: true
@@ -49,16 +52,28 @@ Work through this checklist:
 
 1. Re-read the generated file in full.
 
-2. Re-read `Cargo.toml` for the crate's `license` field and `repository`/`homepage`.
+2. **Run the real format gate**: `cme check dpkg-copyright -file <path>`. This
+   is the authoritative DEP-5 grammar/format check the package build itself
+   uses (`debian/rules` runs it on the merged `debian/copyright`). It works on
+   a single per-crate fragment too. It catches parenthesised `License:`
+   synopses, undeclared license names, malformed `WITH` exceptions, and even
+   `MIT` used where `Expat` is expected — and exits non-zero on failure.
+   - If `cme` exits non-zero, the file **fails**: quote each `cme` complaint in
+     your verdict with the exact corrected text.
+   - `cme` warnings (e.g. deprecation notices) that do not cause a non-zero
+     exit are not by themselves failures, but mention any that indicate a real
+     problem.
 
-3. Grep source files in the crate for explicit license declarations in headers
+3. Re-read `Cargo.toml` for the crate's `license` field and `repository`/`homepage`.
+
+4. Grep source files in the crate for explicit license declarations in headers
    (lines matching "licensed under", "License", "license", "Apache", "MIT",
    "dual-license", and `SPDX-License-Identifier` in comments). Note which
    licenses each file declares. SPDX headers are authoritative: a file whose
    header says `Apache-2.0 OR ISC OR MIT` declares all three, even if
    licensecheck collapses it to one.
 
-4. For every `Files:` stanza:
+5. For every `Files:` stanza:
    - Confirm the glob patterns correspond to paths that actually exist in the
      crate directory.
    - For each `Copyright:` line, verify the named holder appears in a license
@@ -68,7 +83,9 @@ Work through this checklist:
      files (`LICENSE*`, `COPYING*`, `UNLICENSE*`). It is correct and
      intentional that these are covered only by the catch-all glob.
    - Verify the `License:` short name matches the actual license text.
-     Flag `MIT` (should be `Expat`), `Apache-2.0` (should be `Apache-2`), etc.
+     Flag `MIT` (should be `Expat`). Prefer `Apache-2` over `Apache-2.0` in
+     fragments, but do **not** fail a file solely for `Apache-2.0` — both
+     parse under `cme`; note it as a minor consistency suggestion only.
    - **Check `or` vs `and`**: if the `License:` field uses `or`, verify that
      **every** source file within the stanza's scope declares compatibility
      with **all** of the listed licenses. If some files only declare a subset
@@ -78,9 +95,10 @@ Work through this checklist:
    - **Check grammar**: flag any parentheses in a `License:` synopsis (the
      grammar requires commas, e.g. `Apache-2 or ISC, and ISC`), and any
      malformed `WITH` exception (must be lowercase `with`, a token, then the
-     word `exception`, e.g. `Apache-2 with LLVM exception`).
+     word `exception`, e.g. `Apache-2 with LLVM exception`). Note `cme`
+     (step 2) catches most of these automatically.
 
-5. For every stand-alone `License:` stanza:
+6. For every stand-alone `License:` stanza:
    - If it contains full text: verify the text is a correct subset of the
      crate's actual license file.
      **Flag any title line** (e.g. "The MIT License (MIT)", "ISC License").
@@ -95,14 +113,22 @@ Work through this checklist:
      blank lines corrupt the text and break deduplication.
    - If it contains a system pointer: confirm the license is one that has a
      system copy (Apache-2, GPL-*, LGPL-*).
+   - **Do not flag** a stand-alone license whose text is identical to one in
+     another crate's fragment — the merge step (`debian/bin/merge-copyright`)
+     deduplicates identical texts (and renames genuinely-clashing short names
+     to `<name>-<crate>` automatically). Likewise, **do not** propose adding a
+     `-<suffix>` to an exception-form name (`<lic> with <abbrev> exception`):
+     the merge tool never suffixes those and a suffix would break the grammar.
 
-6. Check `Source:` is a URL actually present in `Cargo.toml` (`repository` or
-   `homepage`). Flag if it was invented.
+7. Check `Source:` is a URL actually present in `Cargo.toml` (`repository` or
+   `homepage`). Flag if it was invented. Do **not** flag the absence of a
+   crate-identifying `Comment:` in the header — the header stanza is discarded
+   by the merge step.
 
-7. Flag any `Copyright:` holder not found in any file in the crate or in
+8. Flag any `Copyright:` holder not found in any file in the crate or in
    `Cargo.toml` `authors` as **hallucinated**.
 
-8. **Check completeness** — if **source files** (`.rs`, `.c`, `.h`, etc. —
+9. **Check completeness** — if **source files** (`.rs`, `.c`, `.h`, etc. —
    not `LICENSE*`/`COPYING*`/`UNLICENSE*`) declare a copyright holder or a
    license (including any alternative in an SPDX `OR` expression) that is not
    reflected anywhere in the generated stanzas, flag it as missing. Use

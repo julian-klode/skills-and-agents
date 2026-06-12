@@ -6,7 +6,8 @@ description: >
   Rust crates. Covers DEP-5 / machine-readable copyright format (Format 1.0),
   a two-agent actor-critic loop (writer actor + reviewer critic). Trigger
   keywords: debian/copyright, copyright.in.d, DEP-5, vendored crate, Rust
-  vendor, copyright stanza, decopy, Expat, Unlicense, Apache-2.
+  vendor, copyright stanza, licensecheck, cme check dpkg-copyright, Expat,
+  Unlicense, Apache-2.
 ---
 
 # Debian copyright generation skill
@@ -69,7 +70,11 @@ A file is made of stanzas separated by blank lines. There are three kinds:
 | public-domain (no copyright)    | **public-domain**    |
 | Apache-2.0 WITH LLVM-exception  | **Apache-2 with LLVM exception** |
 
-**Never use** `MIT`, `Apache-2.0`, `MIT License` etc. as DEP-5 short names.
+**Never use** `MIT` or `MIT License` as DEP-5 short names — always use
+`Expat`. **Prefer** `Apache-2` over `Apache-2.0`: both parse under
+`cme check dpkg-copyright` (the project's own `copyright.header` uses
+`Apache-2.0`), but `Apache-2` is the convention for the per-crate fragments,
+so use it for consistency.
 
 ### `or` vs `and` for multi-license stanzas
 
@@ -156,6 +161,11 @@ That is: the literal lowercase word `with`, a single whitespace-free token
   <year> <name of author>" from GPL-3's "How to Apply These Terms"
   instructions) — these are part of the license boilerplate, not
   actual copyright statements for the work.
+  You do not need to match wording exactly across crates: the merge step
+  (`debian/bin/merge-copyright`) deduplicates stand-alone license texts by
+  comparing them with all whitespace collapsed, and the package-wide canonical
+  texts already live in `debian/copyright.header`. Identical-after-whitespace
+  copies collapse into one stanza automatically.
 
 ### Copyright field for UNLICENSE / public-domain files
 
@@ -192,21 +202,24 @@ critic review, and **applies every fix itself**. Editing is the actor's job.
 `rust-vendor/` for batch mode over all crates.
 
 In outline, the actor: reads `Cargo.toml` and the top-level license files;
-runs `licensecheck --merge-licenses -r --deb-machine` **once** for
-authoritative copyright statements and license hints; greps source files for
-SPDX headers and reconciles them with licensecheck; cross-checks against
-`Cargo.toml` and the license files; writes the DEP-5 file; then runs the
-actor-critic loop (invoke critic → apply fixes → re-invoke) for up to 3 rounds.
-Full step-by-step instructions are in the `debian-copyright-writer` agent
+runs `licensecheck --merge-licenses -r --deb-machine` **once** (it already
+emits Debian short names and per-file copyright, but its header stanza and its
+`Copyright: NONE`/`License: UNKNOWN` rows must be discarded) for the primary
+copyright statements and license hints; greps source files for SPDX headers
+and reconciles them with licensecheck; cross-checks against `Cargo.toml` and
+the license files; writes the DEP-5 file; then runs the actor-critic loop
+(invoke critic → apply fixes → re-invoke) for up to 3 rounds. Full
+step-by-step instructions are in the `debian-copyright-writer` agent
 definition.
 
 ### `debian-copyright-reviewer` (the critic)
 
 **Role**: audits the generated file **read-only** and returns a strict verdict.
 It never edits the file and never invokes another agent — it only judges; the
-actor applies. Its `bash` permission is narrowed to inspection commands
-(`licensecheck`, `cme`, `rg`/`grep`, `sed`, `sort`, `uniq`, `head`, `cat`,
-`ls`, `find`).
+actor applies. It runs `cme check dpkg-copyright -file <fragment>` (the same
+format gate the package build uses) plus content checks, with its `bash`
+permission narrowed to inspection commands (`licensecheck`, `cme`, `rg`/`grep`,
+`sed`, `sort`, `uniq`, `head`, `cat`, `ls`, `find`).
 
 **Input**: the path to `debian/copyright.in.d/<crate>` and the crate directory.
 
@@ -243,8 +256,10 @@ The critic never edits and never calls another agent; all editing lives in the
 actor.
 
 For **batch mode** (whole `rust-vendor/` directory): the actor runs the full
-draft + loop for each crate before moving to the next, reporting progress
-crate by crate.
+draft + loop for each crate before moving to the next, reporting **one line per
+crate** (`<crate>: <license> — PASS (N rounds)`) plus a final tally, with full
+detail only for crates that fail after 3 rounds — keeping a large batch from
+overflowing context.
 
 ---
 
@@ -253,7 +268,7 @@ crate by crate.
 | Pitfall                                            | Correct behaviour                                    |
 |----------------------------------------------------|------------------------------------------------------|
 | Using `MIT` as a DEP-5 short name                  | Use `Expat`                                          |
-| Using `Apache-2.0`                                 | Use `Apache-2`                                       |
+| Using `Apache-2.0` in a per-crate fragment         | Prefer `Apache-2` (both parse, but `Apache-2` is the fragment convention) |
 | Inventing a copyright year not in any file         | Omit the year or use what is in the LICENSE file     |
 | Inventing a copyright holder not in any file       | Remove them; flag to user                            |
 | `Source: TODO`                                     | Always populate from `Cargo.toml`                    |
@@ -269,17 +284,25 @@ crate by crate.
 | `WITH`/hyphen in an exception (`Apache-2 WITH LLVM-exception`) | Use `Apache-2 with LLVM exception` (lowercase `with`, space, word `exception`) |
 | Dropping an SPDX `OR` alternative (e.g. file says `Apache-2.0 OR ISC OR MIT`, only `Apache-2 or ISC` written) | Account for every alternative the source declares; add the missing license + stand-alone stanza |
 | Critic editing the file or calling another agent   | The critic is read-only; only the actor edits and only the actor drives the loop |
+| Hand-writing a crate-identifying `Comment:` in the header | The merge step discards the header stanza; let it auto-generate `Used by:` comments |
+| Emitting stanzas for `Copyright: NONE` / `License: UNKNOWN` rows | Drop them; they are metadata/build files covered by the catch-all glob |
+| Suffixing or "fixing" a license whose text matches another crate's | The merge step deduplicates identical texts and renames clashes automatically |
+| Not validating grammar at all                       | The critic runs `cme check dpkg-copyright -file <fragment>` — the real gate |
 
 ---
 
 ## 5. Example output
 
-For `rust-vendor/aho-corasick` (Unlicense OR MIT, author Andrew Gallant):
+For `rust-vendor/aho-corasick` (Unlicense OR MIT, author Andrew Gallant).
+Note: the header stanza (`Format`/`Source`) is discarded by
+`debian/bin/merge-copyright`; only the `Files:` and stand-alone `License:`
+stanzas survive into the final `debian/copyright`. Do **not** hand-write a
+`Comment:` identifying the crate — the merge tool generates `Used by: <crate>`
+comments on the license stanzas automatically.
 
 ```
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Source: https://github.com/BurntSushi/aho-corasick
-Comment: *** only: rust-vendor/aho-corasick ***
 
 Files: rust-vendor/aho-corasick/*
 Copyright: 2015 Andrew Gallant <jamslam@gmail.com>
