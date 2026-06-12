@@ -47,6 +47,12 @@ You will be given:
 Work through this checklist:
 
 1. Re-read the generated file in full.
+   - **Empty fragment = stub crate.** If the file is empty (0 bytes) and the
+     crate is a filtered-out stub (no source file with any non-whitespace
+     content — empty `src/lib.rs` only), that is the **correct** result: such
+     crates ship no code and need no stanzas. Return `VERDICT: PASS`
+     immediately. Only flag an empty fragment if the crate actually contains
+     real code (then it is missing its stanzas).
 
 2. **Run the real format gate**: `cme check dpkg-copyright -file <path>`,
    where `<path>` is the fragment path you were given (e.g.

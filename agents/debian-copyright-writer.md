@@ -39,14 +39,37 @@ multiple crates yourself.
 
 For the crate, follow this workflow precisely:
 
-1. Read `Cargo.toml` to extract: `name`, `authors`, `license`, `repository`,
+1. **Defensive stub check (the coordinator usually filters these out first).**
+   The primary coordinator is supposed to detect filtered-out stub crates and
+   write their empty fragments itself, without invoking you. As a safety net,
+   re-check here: `cargo-vendor-filterer` replaces the body of excluded crates
+   with a stub, leaving an **empty `src/lib.rs`** (0 bytes or whitespace-only)
+   and no other real code — only the `Cargo.toml` and metadata remain. A crate
+   is a stub if it has **no source file** (`.rs`, `.c`, `.h`, `.cpp`, `.cc`,
+   `.go`, `.py`, …) that contains any non-whitespace content. For example:
+   ```
+   # stub if this prints nothing:
+   find rust-vendor/<crate> -type f \( -name '*.rs' -o -name '*.c' -o -name '*.h' \
+     -o -name '*.cpp' -o -name '*.cc' -o -name '*.go' -o -name '*.py' \) \
+     -exec grep -Ilq '[^[:space:]]' {} \; -print
+   ```
+   If you were nonetheless handed a stub, **do not generate any copyright
+   snippet**: write an **empty** `debian/copyright.in.d/<crate>` file (zero
+   bytes) and stop — skip the rest of Phase 1 and the entire review loop.
+   Report it as `<crate>: stub (filtered out) — empty file`. Such crates ship
+   no code, so they need no copyright stanzas; the empty file records that they
+   were handled deliberately (not forgotten).
+
+   Otherwise (the crate has real code), continue with the steps below.
+
+2. Read `Cargo.toml` to extract: `name`, `authors`, `license`, `repository`,
    `homepage`.
 
-2. Read every top-level license/copying file (`LICENSE*`, `COPYING*`,
+3. Read every top-level license/copying file (`LICENSE*`, `COPYING*`,
    `UNLICENSE*`) in full. Identify the actual license from the file text, not
    just the filename.
 
-3. **Extract copyright statements and license hints with `licensecheck`** —
+4. **Extract copyright statements and license hints with `licensecheck`** —
    run `licensecheck --merge-licenses -r --deb-machine rust-vendor/<crate>`
    **once**. This command outputs a DEP-5-formatted file. Read and parse this
    output:
@@ -62,7 +85,7 @@ For the crate, follow this workflow precisely:
      lines are a strong starting point — they are extracted from the actual
      source and license files. **But licensecheck misses copyright statements**
      (unusual header formats, `(C)`/`©` variants, holders in non-standard
-     positions), so they are *not* authoritative on their own. Step 4 greps the
+     positions), so they are *not* authoritative on their own. Step 5 greps the
      files yourself and adds any holders licensecheck missed.
    - **Discard the header and noise rows**: licensecheck emits a header stanza
      with `Upstream-Name: FIXME` / `Source: FIXME` / `Disclaimer:
@@ -72,9 +95,9 @@ For the crate, follow this workflow precisely:
      `License: UNKNOWN`. **Drop every `Copyright: NONE` / `License: UNKNOWN`
      row** — those files carry no copyright and are covered by the catch-all
      `rust-vendor/<crate>/*` glob. Do not emit stanzas for them.
-   - **License hints (verify in steps 4-5)**: the `License:` short names are a
+   - **License hints (verify in steps 5-6)**: the `License:` short names are a
      starting point but can still be **wrong** (misidentified) or
-     **incomplete** (an `OR` expression collapsed to one license). Steps 4-5
+     **incomplete** (an `OR` expression collapsed to one license). Steps 5-6
      verify and correct them.
    - **File groupings**: licensecheck's `Files:` stanzas show which files
      share the same copyright+license. Use these groupings as a starting
@@ -83,9 +106,9 @@ For the crate, follow this workflow precisely:
      `License:` fields, which means `or` in DEP-5 syntax.
 
    This command is the starting point for both copyright and licensing, but it
-   is **not** a substitute for inspecting the files yourself in step 4.
+   is **not** a substitute for inspecting the files yourself in step 5.
 
-4. **Grep the files yourself — copyright statements AND license declarations.**
+5. **Grep the files yourself — copyright statements AND license declarations.**
    licensecheck misses things, so independently grep all source files (`.rs`,
    `.c`, `.h`, `.py`, `.go`, and similar — not binaries or
    `.cargo-checksum.json`), plus the `LICENSE*`/`COPYING*`/`NOTICE*` files, for:
@@ -97,27 +120,27 @@ For the crate, follow this workflow precisely:
      **authoritative**) and lines matching "licensed under", "License:",
      "license", "Apache", "MIT", "dual-license" in comment headers.
 
-   **Reconcile with the licensecheck output from step 3:**
+   **Reconcile with the licensecheck output from step 4:**
    - **Copyright:** if a holder appears in the files but is **missing** from
      licensecheck's `Copyright:` lines, **add it** — your grep is the safety
      net for licensecheck's omissions. Conversely, drop any licensecheck
      "holder" that is actually a false positive (e.g. a code identifier, a URL,
      or boilerplate that is not a real copyright notice) after checking the
      file. The union of (licensecheck ∩ verified) and (your grep findings) is
-     the holder set; collapse per-holder years per step 6.
+     the holder set; collapse per-holder years per step 7.
    - **Licenses:** if SPDX headers declare licenses licensecheck missed, you
      **must** add them (SPDX headers are authoritative). If SPDX headers show
      `Apache-2.0 OR MIT` but licensecheck only reported `Apache-2`, account for
      **both** alternatives. If different files carry different SPDX headers
-     (some `ISC`, some `Apache-2.0 OR ISC`), note this for step 5.
+     (some `ISC`, some `Apache-2.0 OR ISC`), note this for step 6.
 
    This is critical both for capturing every copyright holder and for
    determining whether to use `or` vs `and` in the `License:` field.
 
-5. **Cross-check with Cargo.toml and LICENSE files** — reconcile all findings
-   from steps 3-4 with:
-   - Step 1: Cargo.toml `license` field
-   - Step 2: Actual LICENSE file text
+6. **Cross-check with Cargo.toml and LICENSE files** — reconcile all findings
+   from steps 4-5 with:
+   - Step 2: Cargo.toml `license` field
+   - Step 3: Actual LICENSE file text
    
    Final verification:
    - If Cargo.toml declares `MIT OR Apache-2.0` but neither licensecheck nor
@@ -129,7 +152,7 @@ For the crate, follow this workflow precisely:
    - Map all license names to correct DEP-5 short names per the
      `debian-copyright` skill table (MIT → Expat, Apache-2.0 → Apache-2, etc.).
 
-6. **Group files into `Files:` stanzas by LICENSE — never by copyright.**
+7. **Group files into `Files:` stanzas by LICENSE — never by copyright.**
    The grouping key is the license, not the copyright holder. Produce one
    `Files:` stanza per distinct **license situation**. Always start with the
    broadest glob (`rust-vendor/<crate>/*`), with more specific path globs as
@@ -180,7 +203,7 @@ For the crate, follow this workflow precisely:
      - If a holder's line has no year at all, keep it yearless (do not
        fabricate one); list it after the dated holders.
 
-7. **Choose the `License:` expression per stanza** — `or`, separate stanzas,
+8. **Choose the `License:` expression per stanza** — `or`, separate stanzas,
    or (rarely) `and`:
    - **`or`** — use when a file itself offers a **choice** of licenses, i.e.
      its SPDX header is `A OR B` (e.g. `SPDX-License-Identifier: Apache-2.0 OR
@@ -188,7 +211,7 @@ For the crate, follow this workflow precisely:
      must offer all the listed alternatives.
    - **Different actual licenses across files → separate stanzas, NOT `and`.**
      If file X is MIT-only and file Y is Apache-2-only, do not write one stanza
-     `Expat and Apache-2`; split them into a stanza per license (per step 6).
+     `Expat and Apache-2`; split them into a stanza per license (per step 7).
    - **`and`** — reserve for only two cases, and add a `Comment:` for the
      first:
      1. **Genuine uncertainty about a single file**: the file's own header and
@@ -206,32 +229,32 @@ For the crate, follow this workflow precisely:
      parentheses into commas — the grammar has no parentheses. e.g.
      `ISC AND (Apache-2.0 OR ISC)` → `Apache-2 or ISC, and ISC`.
 
-8. Translate all license identifiers to DEP-5 short names using the mapping
+9. Translate all license identifiers to DEP-5 short names using the mapping
    in the `debian-copyright` skill (e.g. MIT → Expat, Apache-2.0 → Apache-2,
    `WITH LLVM-exception` → `with LLVM exception`).
 
-9. Set `Source:` to `repository` from Cargo.toml, falling back to `homepage`,
-   then `https://crates.io/crates/<name>`. Never invent a URL. Write a minimal
-   header stanza (`Format:` + `Source:`) only — the merge step
-   (`debian/bin/merge-copyright`) **discards each fragment's header stanza**,
-   so do **not** add a `Comment:` identifying the crate. Cross-crate "Used by:"
-   comments on license stanzas are generated automatically by the merge tool.
+10. Set `Source:` to `repository` from Cargo.toml, falling back to `homepage`,
+    then `https://crates.io/crates/<name>`. Never invent a URL. Write a minimal
+    header stanza (`Format:` + `Source:`) only — the merge step
+    (`debian/bin/merge-copyright`) **discards each fragment's header stanza**,
+    so do **not** add a `Comment:` identifying the crate. Cross-crate "Used by:"
+    comments on license stanzas are generated automatically by the merge tool.
 
-10. For stand-alone `License:` stanzas:
-     - Apache-2, GPL-2, GPL-3, LGPL-2.1: use the `/usr/share/common-licenses/`
-       pointer.
-     - All others: embed the license text from the crate's license file, with
-       blank lines replaced by ` .` (one space then a dot), and **every**
-       continuation line indented by exactly **one** leading space.
-       **Strip** any title line (e.g. "The MIT License (MIT)", "ISC License").
-       **Strip any real copyright notice** with a specific name and year
-       (e.g. "Copyright (c) 2015 Andrew Gallant") — these belong in the
-       `Copyright:` field, not duplicated here.
-       **Keep template/placeholder** copyright lines (e.g. "Copyright (C)
-       <year> <name of author>") — these are license boilerplate, not actual
-       copyright statements for the work.
+11. For stand-alone `License:` stanzas:
+      - Apache-2, GPL-2, GPL-3, LGPL-2.1: use the `/usr/share/common-licenses/`
+        pointer.
+      - All others: embed the license text from the crate's license file, with
+        blank lines replaced by ` .` (one space then a dot), and **every**
+        continuation line indented by exactly **one** leading space.
+        **Strip** any title line (e.g. "The MIT License (MIT)", "ISC License").
+        **Strip any real copyright notice** with a specific name and year
+        (e.g. "Copyright (c) 2015 Andrew Gallant") — these belong in the
+        `Copyright:` field, not duplicated here.
+        **Keep template/placeholder** copyright lines (e.g. "Copyright (C)
+        <year> <name of author>") — these are license boilerplate, not actual
+        copyright statements for the work.
 
-11. Write the result to `debian/copyright.in.d/<crate-name>`.
+12. Write the result to `debian/copyright.in.d/<crate-name>`.
 
 **Do not invent copyright holders, years, or URLs not present in the files.**
 If information is genuinely absent, omit the field or use a minimal safe value.

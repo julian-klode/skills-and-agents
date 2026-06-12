@@ -204,6 +204,21 @@ public domain.
 Always populate from `Cargo.toml`: use `repository` if present, else
 `homepage`, else `https://crates.io/crates/<name>`. Never invent a URL.
 
+### Filtered-out stub crates
+
+`cargo-vendor-filterer` excludes crates that aren't needed on the target
+platforms by replacing their body with a stub: an **empty `src/lib.rs`**
+(0 bytes or whitespace-only) and no other real code — only `Cargo.toml` and
+metadata remain. A crate is a stub when it has **no source file** (`.rs`,
+`.c`, `.h`, `.cpp`, `.cc`, `.go`, `.py`, …) containing any non-whitespace
+content.
+
+Such crates ship no code, so they need **no copyright stanzas**. For a stub,
+write an **empty** `debian/copyright.in.d/<crate>` file (zero bytes) and do
+nothing else — no licensecheck, no grep, no review loop. The empty file is the
+correct, complete result: it records that the crate was handled deliberately
+(merge-copyright simply contributes nothing from it) rather than overlooked.
+
 ---
 
 ## 2. The two agents
@@ -295,22 +310,41 @@ The `/copyright` command is the named entry point (`/copyright all` for the
 whole tree, `/copyright <crate-dir>` for one). For a whole-tree run the primary:
 
 1. **Enumerate** the direct subdirectories of `rust-vendor/`.
-2. **Resume — skip already-done crates.** A crate is "done" when its
-   `debian/copyright.in.d/<crate>` exists, is non-empty, **and** passes
-   `cme check dpkg-copyright -file debian/copyright.in.d/<crate>` (exit 0).
-   Skip those; only (re)generate crates that are missing or whose fragment
-   fails `cme`. This makes re-runs cheap and self-healing.
-3. **Fan out in parallel.** Invoke `debian-copyright-writer` once per remaining
-   crate, issuing several `task` calls in a single message so they run
-   concurrently. The primary **chooses its own batch width** based on how many
-   crates remain and tool limits (the user may also trigger/adjust fan-out
-   manually). Each invocation gets a fresh, isolated context — this is the
-   whole reason the writer is single-crate.
-4. **Aggregate** results as **one line per crate**
-   (`<crate>: <license> — PASS (N rounds)`), surfacing full detail only for
-   crates that still fail after 3 rounds. End with a tally
-   (e.g. `361 crates: 357 PASS, 0 escalated, 4 skipped (already done)`).
-5. **Assemble + validate.** Once all fragments exist and pass, run
+2. **Handle stub crates directly — do not spawn a writer for them.** A crate
+   is a filtered-out stub if it has **no source file** (`.rs`, `.c`, `.h`,
+   `.cpp`, `.cc`, `.go`, `.py`, …) containing any non-whitespace content (the
+   typical signal is an empty `src/lib.rs`; see §"Filtered-out stub crates").
+   For each stub, the primary **writes the empty `debian/copyright.in.d/<crate>`
+   itself** (zero bytes) and removes it from the work list. This avoids ~one
+   subagent invocation per stub (often a large fraction of the tree). One-liner
+   to detect a stub (prints nothing ⇒ stub):
+   ```
+   find rust-vendor/<crate> -type f \( -name '*.rs' -o -name '*.c' -o -name '*.h' \
+     -o -name '*.cpp' -o -name '*.cc' -o -name '*.go' -o -name '*.py' \) \
+     -exec grep -Ilq '[^[:space:]]' {} \; -print
+   ```
+3. **Resume — skip already-done crates.** A crate is "done" when its
+   `debian/copyright.in.d/<crate>` either:
+   - exists, is **non-empty**, **and** passes
+     `cme check dpkg-copyright -file debian/copyright.in.d/<crate>` (exit 0); or
+   - exists and is **empty (0 bytes)** while the crate is a stub (already
+     handled in step 2).
+   Skip those; only (re)generate crates that are missing, whose non-empty
+   fragment fails `cme`, or whose fragment is empty but the crate is **not** a
+   stub (an erroneous empty file). This makes re-runs cheap and self-healing.
+4. **Fan out in parallel** (real, non-stub, not-yet-done crates only). Invoke
+   `debian-copyright-writer` once per remaining crate, issuing several `task`
+   calls in a single message so they run concurrently. The primary **chooses
+   its own batch width** based on how many crates remain and tool limits (the
+   user may also trigger/adjust fan-out manually). Each invocation gets a
+   fresh, isolated context — this is the whole reason the writer is
+   single-crate. (The writer also re-checks for a stub as a defensive
+   fallback, but the coordinator should already have filtered them out.)
+5. **Aggregate** results as **one line per crate**
+   (`<crate>: <license> — PASS (N rounds)`, or `<crate>: stub — empty file`),
+   surfacing full detail only for crates that still fail after 3 rounds. End
+   with a tally (e.g. `361 crates: 266 PASS, 91 stubs, 0 escalated, 4 skipped`).
+6. **Assemble + validate.** Once all fragments exist and pass, run
    `debian/rules debian/copyright`. That target runs
    `debian/bin/merge-copyright` (deduplicates stand-alone license texts and
    renames clashing short names) and then `cme check dpkg-copyright` on the
@@ -325,6 +359,7 @@ actor, and all batching lives in the primary.
 
 | Pitfall                                            | Correct behaviour                                    |
 |----------------------------------------------------|------------------------------------------------------|
+| Generating stanzas for a filtered-out stub crate (empty `src/lib.rs`, no real code) | Write an empty `debian/copyright.in.d/<crate>` and skip all generation |
 | Using `MIT` as a DEP-5 short name                  | Use `Expat`                                          |
 | Using `Apache-2.0` in a per-crate fragment         | Prefer `Apache-2` (both parse, but `Apache-2` is the fragment convention) |
 | Inventing a copyright year not in any file         | Omit the year or use what is in the LICENSE file     |
