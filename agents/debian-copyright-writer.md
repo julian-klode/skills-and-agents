@@ -240,9 +240,22 @@ For the crate, follow this workflow precisely:
     so do **not** add a `Comment:` identifying the crate. Cross-crate "Used by:"
     comments on license stanzas are generated automatically by the merge tool.
 
-11. For stand-alone `License:` stanzas:
-      - Apache-2, GPL-2, GPL-3, LGPL-2.1: use the `/usr/share/common-licenses/`
-        pointer.
+ 11. For stand-alone `License:` stanzas:
+       - Apache-2, GPL-2, GPL-2+, GPL-3, GPL-3+, LGPL-2.1, LGPL-2.1+: use the
+         Debian common-licenses **paragraph pointer**, not just the bare file
+         path. The full two-line form is required:
+         ```
+         License: Apache-2
+          On Debian systems, the full text of the Apache License Version 2.0
+          can be found in the file `/usr/share/common-licenses/Apache-2.0'.
+         ```
+         Adjust the license name and path for each:
+         - Apache-2: `…the Apache License Version 2.0…/usr/share/common-licenses/Apache-2.0'`
+         - GPL-2 / GPL-2+: `…the GNU General Public License version 2…/usr/share/common-licenses/GPL-2'`
+         - GPL-3 / GPL-3+: `…the GNU General Public License version 3…/usr/share/common-licenses/GPL-3'`
+         - LGPL-2.1 / LGPL-2.1+: `…the GNU Lesser General Public License version 2.1…/usr/share/common-licenses/LGPL-2.1'`
+          Never write just the file path on a single line — always use the
+          two-line paragraph form shown above.
       - All others: embed the license text from the crate's license file, with
         blank lines replaced by ` .` (one space then a dot), and **every**
         continuation line indented by exactly **one** leading space.

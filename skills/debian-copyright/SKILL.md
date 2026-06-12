@@ -166,11 +166,27 @@ That is: the literal lowercase word `with`, a single whitespace-free token
   ```
   License: Apache-2
    On Debian systems, the full text of the Apache License Version 2.0
-   can be found in the file `/usr/share/common-licenses/Apache-2.0`.
+   can be found in the file `/usr/share/common-licenses/Apache-2.0'.
   ```
-- **GPL-2, GPL-2+**: pointer to `/usr/share/common-licenses/GPL-2`.
-- **GPL-3, GPL-3+**: pointer to `/usr/share/common-licenses/GPL-3`.
-- **LGPL-2.1, LGPL-2.1+**: pointer to `/usr/share/common-licenses/LGPL-2.1`.
+- **GPL-2, GPL-2+**:
+  ```
+  License: GPL-2
+   On Debian systems, the full text of the GNU General Public License version 2
+   can be found in the file `/usr/share/common-licenses/GPL-2'.
+  ```
+- **GPL-3, GPL-3+**:
+  ```
+  License: GPL-3
+   On Debian systems, the full text of the GNU General Public License version 3
+   can be found in the file `/usr/share/common-licenses/GPL-3'.
+  ```
+- **LGPL-2.1, LGPL-2.1+**:
+  ```
+  License: LGPL-2.1
+   On Debian systems, the full text of the GNU Lesser General Public
+   License version 2.1 can be found in the file
+   `/usr/share/common-licenses/LGPL-2.1'.
+  ```
 - **All other licenses** (Expat, ISC, BSD-*, Unlicense, CC0, etc.):
   embed the license text from the crate's license file, with blank
   lines replaced by ` .` (a space then a dot).
@@ -370,7 +386,8 @@ actor, and all batching lives in the primary.
 | `Source: TODO`                                     | Always populate from `Cargo.toml`                    |
 | Glob missing subdirectories                        | Use `rust-vendor/foo/*` to cover all depths          |
 | Specific globs before general ones                 | General first; specific overrides last (last wins)   |
-| Embedding Apache-2 full text                       | Use `/usr/share/common-licenses/Apache-2.0` pointer  |
+| Embedding Apache-2 full text                       | Use the Debian common-licenses paragraph pointer (two-line form, not bare path) |
+| Writing just the bare path for common-licenses (e.g. `License: GPL-2\n /usr/share/common-licenses/GPL-2`) | Use the two-line paragraph form: `On Debian systems, the full text of the… can be found in the file…' |
 | Real copyright in License: stanza body                | Move to `Copyright:` field; only keep template placeholders like `<year>` |
 | Splitting a stanza because copyright holders differ | Group by license only; merge same-license files into one stanza with multiple `Copyright:` lines |
 | An entirely vendored/embedded subtree at the same license | May get its own `Files:` stanza (with a `Comment:`) for attribution — this is allowed, not an error |
