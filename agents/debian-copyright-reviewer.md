@@ -162,6 +162,11 @@ Work through this checklist:
       ```
       Also **flag** if a license is in `/usr/share/common-licenses/` but the
       stanza embeds the full text — it should use the pointer instead.
+      **Exception**: licenses of the form `<base> with <abbrev> exception`
+      (e.g. `Apache-2 with LLVM exception`) where the base license is in
+      common-licenses: these must use the pointer for the base and then
+      embed only the exception text. Do **not** flag these as "embedding
+      full text" — the pointer plus exception text is the correct form.
    - **Do not flag** a stand-alone license whose text is identical to one in
      another crate's fragment — the merge step (`debian/bin/merge-copyright`)
      deduplicates identical texts (and renames genuinely-clashing short names

@@ -382,7 +382,7 @@ actor, and all batching lives in the primary.
 | `Source: TODO`                                     | Always populate from `Cargo.toml`                    |
 | Glob missing subdirectories                        | Use `rust-vendor/foo/*` to cover all depths          |
 | Specific globs before general ones                 | General first; specific overrides last (last wins)   |
-| Embedding Apache-2 full text                       | Use the Debian common-licenses paragraph pointer (run `ls /usr/share/common-licenses/` to check) |
+| Embedding Apache-2 full text                       | Use the Debian common-licenses paragraph pointer (run `ls /usr/share/common-licenses/` to check); for exception forms like `Apache-2 with LLVM exception` use the pointer for the base plus the exception text only |
 | Writing just the bare path for common-licenses (e.g. `License: GPL-2\n /usr/share/common-licenses/GPL-2`) | Use the two-line paragraph form: `On Debian systems, the full text of the… can be found in the file…' |
 | Embedding full text of a license that exists in `/usr/share/common-licenses/` | Run `ls /usr/share/common-licenses/` and use the paragraph pointer for any license present there |
 | Real copyright in License: stanza body                | Move to `Copyright:` field; only keep template placeholders like `<year>` |

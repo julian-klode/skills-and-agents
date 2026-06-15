@@ -279,6 +279,24 @@ For the crate, follow this workflow precisely:
      <year> <name of author>") — these are license boilerplate, not actual
      copyright statements for the work.
 
+     **Special case — license with an exception** (e.g. `Apache-2 with LLVM
+     exception`): when the short name includes `with <abbrev> exception`, and
+     the base license (e.g. `Apache-2`) is in `/usr/share/common-licenses/`:
+     use the common-licenses pointer for the base portion, then include only
+     the exception text (not the full base license text).  The exception text
+     follows the pointer after a ` .` blank line and must be one-space-indented
+     body lines:
+
+     ```
+     License: Apache-2 with LLVM exception
+      On Debian systems, the full text of the Apache License Version 2.0
+      can be found in the file `/usr/share/common-licenses/Apache-2.0'.
+      .
+      --- LLVM Exceptions to the Apache 2.0 License ----
+      .
+      <exception text, one-space-indented body lines>
+     ```
+
 12. Write the result to `debian/copyright.in.d/<crate-name>`.
 
 **Do not invent copyright holders, years, or URLs not present in the files.**
