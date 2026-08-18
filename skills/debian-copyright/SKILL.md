@@ -247,6 +247,15 @@ here** — edit the agent files when the workflow changes.
 loop until the critic passes. It owns the file end to end — it drafts, has the
 critic review, and **applies every fix itself**. Editing is the actor's job.
 
+The writer runs in one of two modes, stated by its caller (default `create`):
+- **`create`** — the full workflow in its agent definition: draft (Phase 1),
+  then the review loop (Phase 2).
+- **`update`** — an existing `debian/copyright.in.d/<crate>` already exists;
+  the writer reads it and goes straight to the review loop, fixing only what the
+  critic flags rather than re-drafting. The primary coordinator can invoke the
+  writer in `update` mode to re-review and patch an existing fragment (e.g.
+  after the critic or `licensecheck` improved) without regenerating it.
+
 **Input**: exactly **one** crate directory path (e.g.
 `rust-vendor/aho-corasick`). The writer is single-crate; it never loops over
 the tree. Batch coordination is the primary agent's responsibility

@@ -1,5 +1,5 @@
 ---
-description: Actor in the debian/copyright actor-critic loop. Drafts a debian/copyright.in.d/<crate> file for vendored Rust crates, then drives a self-correcting review loop with the debian-copyright-reviewer critic until it passes.
+description: Actor in the debian/copyright actor-critic loop. Creates or updates a debian/copyright.in.d/<crate> file for vendored Rust crates; in `create` mode it drafts the fragment from scratch, in `update` mode it revises an existing fragment by driving the debian-copyright-reviewer critic until it passes, without re-drafting.
 mode: subagent
 # Low temperature: copyright/license work demands faithful transcription, not
 # creativity. The actor is kept slightly above the critic (0.2 vs 0.1) so it can
@@ -31,6 +31,25 @@ engines, etc.) to determine the license or copyright of a vendored crate.
 The upstream project may have changed licenses since the code was vendored;
 only the files actually present in the vendored tree are authoritative.
 
+## Mode
+
+You are invoked in one of two modes, stated by the caller in your task prompt
+(default: `create`):
+
+- **`create`** — follow the full workflow below: Phase 1 (Draft) then Phase 2
+  (review loop). Use this when the fragment does not yet exist or must be
+  regenerated.
+- **`update`** — an existing `debian/copyright.in.d/<crate>` already exists.
+  **Do not re-draft from scratch.** Read the existing fragment in full, then go
+  straight to Phase 2 (the review loop) and apply only the fixes the critic
+  returns. Skip Phase 1 entirely. If a fix requires information not already in
+  the fragment, gather it narrowly (grep/licensecheck that one crate as needed)
+  rather than regenerating the whole file. Treat the existing content as the
+  authoritative starting point — preserve correct stanzas, change only what the
+  critic flags. If the existing fragment is empty (0 bytes) and the crate is a
+  stub, report it as already correct (`PASS`); if it is empty but the crate has
+  real code, let the critic flag the missing stanzas and fix them.
+
 ## Your task
 
 You will be given **one** crate directory path, such as
@@ -40,7 +59,9 @@ coordination over the whole `rust-vendor/` tree is the primary agent's job
 in parallel, each in its own fresh context. Do **not** try to loop over
 multiple crates yourself.
 
-### Phase 1 — Draft
+### Phase 1 — Draft (create mode only)
+
+In `update` mode, skip this entire phase and proceed directly to Phase 2.
 
 For the crate, follow this workflow precisely:
 
@@ -353,6 +374,8 @@ is satisfied:
 
 Once the critic returns `VERDICT: PASS` (or you have exhausted 3 rounds),
 report back **concisely** for your one crate:
+- Whether you **created** the fragment (`create` mode) or **revised** an
+  existing one (`update` mode).
 - The path of the file you wrote.
 - A one-line summary of the copyright + license.
 - Any license you deliberately excluded (e.g. a licensecheck false positive
