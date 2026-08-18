@@ -382,6 +382,7 @@ actor, and all batching lives in the primary.
 | `Source: TODO`                                     | Always populate from `Cargo.toml`                    |
 | Glob missing subdirectories                        | Use `rust-vendor/foo/*` to cover all depths          |
 | Specific globs before general ones                 | General first; specific overrides last (last wins)   |
+| A broad glob (`dir/*`) shadowing a single file with a *different* license (e.g. a `CMakeLists.txt`/`Makefile` that is `Apache-2 or ISC` inside an otherwise `BSD-3-clause` subtree) | Prefer narrowing the broad glob to the subdir that truly shares its license (e.g. `dir/lib/*`) so the odd file falls through to the right catch-all; otherwise add a more-specific stanza for that file **after** the broad glob. Verify SPDX headers under each broad glob are uniform |
 | Embedding Apache-2 full text                       | Use the Debian common-licenses paragraph pointer (run `ls /usr/share/common-licenses/` to check); for exception forms like `Apache-2 with LLVM exception` use the pointer for the base plus the exception text only |
 | Writing just the bare path for common-licenses (e.g. `License: GPL-2\n /usr/share/common-licenses/GPL-2`) | Use the two-line paragraph form: `On Debian systems, the full text of the… can be found in the file…' |
 | Embedding full text of a license that exists in `/usr/share/common-licenses/` | Run `ls /usr/share/common-licenses/` and use the paragraph pointer for any license present there |

@@ -110,6 +110,33 @@ Work through this checklist:
    - Do **not** flag the absence of individual `Files:` stanzas for license
      files (`LICENSE*`, `COPYING*`, `UNLICENSE*`). It is correct and
      intentional that these are covered only by the catch-all glob.
+   - **Check for last-match-wins shadowing.** DEP-5 resolves each file to the
+     **last** `Files:` stanza whose glob matches it; earlier matches are
+     overridden. So a broad glob (e.g. `.../jitterentropy/*`) placed **after** a
+     more specific stanza silently steals files the earlier stanza meant to
+     cover, and — more dangerously — a broad glob covers every file beneath it,
+     including individual files that carry a **different** license than the rest
+     of the subtree. For each stanza, determine which files it is the *last*
+     match for, and verify those files' actual SPDX headers/license text match
+     the stanza's `License:`. In particular, when a directory glob like
+     `dir/*` declares one license but a specific file inside it
+     (build glue such as `CMakeLists.txt`/`Makefile`/`*.cmake`, a vendored
+     sub-file, a `NOTICE`, etc.) has a **different** SPDX header, that file is
+     wrongly absorbed by the broad glob. **Flag it.** Prefer the fix that
+     **narrows the broad glob** so it only matches the files that genuinely
+     share its license (e.g. change `.../jitterentropy/*` to
+     `.../jitterentropy/jitterentropy-library/*` when the BSD code all lives in
+     that subdirectory and only the root `CMakeLists.txt` differs) — the
+     differing file then falls through to the correct catch-all or its own
+     stanza, and the result no longer depends on stanza ordering. If narrowing
+     is not clean (the differing file is interleaved among files the glob must
+     keep), instead add a **more specific** `Files:` stanza for that file
+     **after** the broad glob, with the file's real license. Concretely, grep
+     the SPDX headers of the files under each broad glob
+     (`rg -n 'SPDX-License-Identifier' <dir>`) and confirm they are uniform;
+     any file whose header differs from the glob's declared license and is not
+     carved out (by narrowing, a later more-specific stanza, or a correct
+     catch-all) is a shadowing error to flag.
    - Verify the `License:` short name matches the actual license text.
      Flag `MIT` (should be `Expat`). Prefer `Apache-2` over `Apache-2.0` in
      fragments, but do **not** fail a file solely for `Apache-2.0` — both
@@ -192,6 +219,12 @@ Work through this checklist:
    licensecheck false positives (`UNKNOWN`, `*No copyright*`,
    `[generated file]`, an OpenSSL advertising clause misread as `Apache-1.0`)
    and do not demand they be added.
+   - **"Reflected" means reflected in the stanza that actually wins.** A
+     holder or license that appears only in a stanza that is **overridden** by
+     a later, broader glob (see the last-match-wins check in step 5) is **not**
+     covered — the winning stanza is what governs the file. Treat a license
+     that some file genuinely carries but no *winning* stanza declares as
+     missing, even if an earlier (shadowed) stanza happened to mention it.
 
 ## Output format
 
