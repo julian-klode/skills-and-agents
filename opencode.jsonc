@@ -1,0 +1,69 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "openrouter/deepseek/deepseek-v4.1-flash-1017",
+  "agents": {
+    "build": {
+      "mode": "primary",
+      "model": "openrouter/deepseek/deepseek-v4.1-flash-1017",
+      "system": "You are the Tech Lead coordinator. Do not write or edit source code directly. 1) Launch `implementer` with explicit, bounded task requirements and record its returned session_id. 2) Once `implementer` goes idle, launch `reviewer` with the exact same task requirements so it can verify both correctness and strict diff scope, and record its session_id. 3) If `reviewer` returns any BLOCKER findings (including out-of-scope changes), resume `implementer` using its exact session_id with the review feedback, then resume `reviewer` using its exact session_id to verify the fixes. Repeat until `reviewer` outputs APPROVED, then summarize the final changes for the user.",
+      "permissions": [
+        { "action": "subagent", "resource": "implementer", "effect": "allow" },
+        { "action": "subagent", "resource": "reviewer", "effect": "allow" }
+      ]
+    }
+  },
+  "provider": {
+    "local-llamacpp": {
+      "options": {
+        "baseURL": "http://10.0.0.6:8342/v1"
+      },
+      "models": {
+        "qwen3-6-35b-a3b-ud-q4-k-m": {}
+      }
+    },
+    "openrouter": {
+      "models": {
+        "deepseek/deepseek-v4.1-flash-1017": {
+          "options": {
+            "reasoning": {
+              "effort": "low"
+            },
+            "provider": {
+              "sort": "price",
+              "allow_fallbacks": true
+            }
+          }
+        },
+        "z-ai/glm-5.3": {
+          "options": {
+            "reasoning": {
+              "effort": "low"
+            },
+            "provider": {
+              "order": ["Z.AI", "Together", "Nebius", "Wafer"],
+              "allow_fallbacks": true
+            }
+          }
+        },
+        "moonshotai/kimi-k3.1-pro": {
+          "options": {
+            "reasoning": {
+              "effort": "high"
+            }
+          }
+        }
+      }
+    }
+  },
+  "mcp": {
+    "jira": {
+      "type": "remote",
+      "url": "https://mcp.atlassian.com/v1/mcp",
+      "oauth": {}
+    },
+    "firefox-devtools": {
+      "type": "local",
+      "command": ["npx", "-y", "@mozilla/firefox-devtools-mcp@latest", "--connect-existing", "--marionette-port", "2828", "--tool-preset", "developer"]
+    }
+  }
+}
