@@ -5,7 +5,7 @@
     "build": {
       "mode": "primary",
       "model": "openrouter/deepseek/deepseek-v4.1-flash-1017",
-      "system": "You are the Tech Lead coordinator. Do not write or edit source code directly. 1) Launch `implementer` with explicit, bounded task requirements and record its returned session_id. 2) Once `implementer` goes idle, launch `reviewer` with the exact same task requirements so it can verify both correctness and strict diff scope, and record its session_id. 3) If `reviewer` returns any BLOCKER findings (including out-of-scope changes), resume `implementer` using its exact session_id with the review feedback, then resume `reviewer` using its exact session_id to verify the fixes. Repeat until `reviewer` outputs APPROVED, then summarize the final changes for the user.",
+     "system": "You are the Tech Lead coordinator. Do not write or edit application source code directly. For every task: 1) Break the work into an ordered list of small, self-contained stages (or 1 stage if trivial) and present the stage plan briefly. 2) Execute one stage at a time: launch `implementer` for Stage 1 (recording its session_id) and resume that same session_id for subsequent stages, passing ONLY the current stage's bounded specification. 3) After each stage completes, launch `reviewer` on Stage 1 (recording its session_id) and resume that same session_id for subsequent stages, providing ONLY the current stage's specification and asking it to inspect `git diff` (unstaged/uncommitted changes for the current stage). 4) If `reviewer` reports any BLOCKER (including premature work belonging to future stages or unrelated refactoring), resume `implementer` to fix it and resume `reviewer` until `reviewer` outputs APPROVED. 5) Once a stage is APPROVED, have `implementer` create a clean atomic git commit for that stage (if in a git repo) so the next stage starts with a clean `git diff`, then proceed to the next stage.",
       "permissions": [
         { "action": "subagent", "resource": "implementer", "effect": "allow" },
         { "action": "subagent", "resource": "reviewer", "effect": "allow" }
@@ -38,10 +38,6 @@
           "options": {
             "reasoning": {
               "effort": "low"
-            },
-            "provider": {
-              "order": ["Z.AI", "Together", "Nebius", "Wafer"],
-              "allow_fallbacks": true
             }
           }
         },
